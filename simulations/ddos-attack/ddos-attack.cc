@@ -120,7 +120,14 @@ main(int argc, char* argv[])
 
     // --- SDN control plane (same controller as Phase 5/6, no changes) ---
     Ptr<OFSwitch13InternalHelper> of13Helper = CreateObject<OFSwitch13InternalHelper>();
+    // This experiment is "DDoS attack WITHOUT mitigation" (Experiment 2) --
+    // detection still runs and logs to detections.csv, but mitigation flow
+    // rules are deliberately disabled so the attack's full, unmitigated
+    // impact can be measured. See simulations/ddos-mitigated for the
+    // mitigated counterpart (Experiment 3), which uses this exact same
+    // controller class with EnableMitigation left at its default (true).
     Ptr<SdnController> controllerApp = CreateObject<SdnController>();
+    controllerApp->SetAttribute("EnableMitigation", BooleanValue(false));
     of13Helper->InstallController(controllerNode, controllerApp);
     of13Helper->InstallSwitch(switchNode, switchPorts);
     of13Helper->CreateOpenFlowChannels();

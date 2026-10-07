@@ -8,7 +8,9 @@ namespace ns3
 NS_OBJECT_ENSURE_REGISTERED(SdnController);
 
 SdnController::SdnController()
-    : m_monitorInterval(Seconds(1.0))
+    : m_monitorInterval(Seconds(1.0)),
+      m_pktRateThreshold(1000.0),
+      m_mitigationEnabled(true)
 {
     NS_LOG_FUNCTION(this);
 }
@@ -30,7 +32,17 @@ SdnController::GetTypeId()
                           "How often to poll switches for port statistics.",
                           TimeValue(Seconds(1.0)),
                           MakeTimeAccessor(&SdnController::m_monitorInterval),
-                          MakeTimeChecker());
+                          MakeTimeChecker())
+            .AddAttribute("PacketRateThreshold",
+                          "A port sending above this many packets/sec is marked suspicious.",
+                          DoubleValue(1000.0),
+                          MakeDoubleAccessor(&SdnController::m_pktRateThreshold),
+                          MakeDoubleChecker<double>())
+            .AddAttribute("EnableMitigation",
+                          "Whether to install DROP flow-mod rules for suspicious ports.",
+                          BooleanValue(true),
+                          MakeBooleanAccessor(&SdnController::m_mitigationEnabled),
+                          MakeBooleanChecker());
     return tid;
 }
 
@@ -43,6 +55,11 @@ SdnController::DoDispose()
     {
         m_monitorFile.close();
         m_monitorFileOpen = false;
+    }
+    if (m_detectionFileOpen)
+    {
+        m_detectionFile.close();
+        m_detectionFileOpen = false;
     }
     OFSwitch13Controller::DoDispose();
 }
@@ -63,6 +80,7 @@ SdnController::HandshakeSuccessful(Ptr<const RemoteSwitch> swtch)
     // Start this switch with an empty learning table.
     m_l2Table[swDpId] = L2Table_t();
     m_lastPortStats[swDpId] = PortStatsMap_t();
+    m_suspicious[swDpId] = PortSuspicionMap_t();
 
     if (!m_monitorFileOpen)
     {
@@ -70,6 +88,14 @@ SdnController::HandshakeSuccessful(Ptr<const RemoteSwitch> swtch)
         m_monitorFile << "TimeSec,DatapathId,PortNo,SourceMac,RxPackets,RxBytes,"
                       << "PacketsPerSec,BytesPerSec\n";
         m_monitorFileOpen = true;
+    }
+
+    if (!m_detectionFileOpen)
+    {
+        m_detectionFile.open("detections.csv");
+        m_detectionFile << "TimeSec,DatapathId,PortNo,SourceMac,PacketsPerSec,"
+                        << "Threshold,Event\n";
+        m_detectionFileOpen = true;
     }
 
     // Kick off periodic port-statistics polling for this switch. It keeps
@@ -147,8 +173,80 @@ SdnController::ProcessPortStatsReply(uint64_t swDpId, struct ofl_msg_multipart_r
                       << sourceMac << "," << rxPackets << "," << rxBytes << "," << packetsPerSec
                       << "," << bytesPerSec << "\n";
 
+        CheckThreshold(swDpId, portNo, sourceMac, packetsPerSec);
+
         lastStats[portNo] = {rxPackets, rxBytes};
     }
+}
+
+void
+SdnController::CheckThreshold(uint64_t swDpId,
+                              uint32_t portNo,
+                              const std::string& sourceMac,
+                              double packetsPerSec)
+{
+    NS_LOG_FUNCTION(this << swDpId << portNo << packetsPerSec);
+
+    // The entire detection rule, as required: a plain threshold comparison,
+    // no learning, no statistics beyond this. Source is identified by
+    // switch port (and the MAC we've learned sits behind it) -- the same
+    // granularity Phase 8's monitoring operates at, and the same handle
+    // Phase 10's mitigation flow-mod rules will use to act on just this one
+    // source.
+    bool& wasSuspicious = m_suspicious[swDpId][portNo]; // default false if new port
+    bool isSuspicious = packetsPerSec > m_pktRateThreshold;
+
+    if (isSuspicious && !wasSuspicious)
+    {
+        NS_LOG_WARN("Port " << portNo << " (" << sourceMac << ") exceeded threshold: "
+                            << packetsPerSec << " > " << m_pktRateThreshold << " pkt/s");
+        m_detectionFile << Simulator::Now().GetSeconds() << "," << swDpId << "," << portNo << ","
+                        << sourceMac << "," << packetsPerSec << "," << m_pktRateThreshold << ","
+                        << (m_mitigationEnabled ? "DETECTED_AND_BLOCKED" : "DETECTED") << "\n";
+        if (m_mitigationEnabled)
+        {
+            InstallMitigation(swDpId, portNo);
+        }
+    }
+    else if (!isSuspicious && wasSuspicious)
+    {
+        NS_LOG_INFO("Port " << portNo << " (" << sourceMac
+                            << ") dropped back below threshold: " << packetsPerSec << " <= "
+                            << m_pktRateThreshold << " pkt/s");
+        m_detectionFile << Simulator::Now().GetSeconds() << "," << swDpId << "," << portNo << ","
+                        << sourceMac << "," << packetsPerSec << "," << m_pktRateThreshold << ","
+                        << (m_mitigationEnabled ? "CLEARED_AND_UNBLOCKED" : "CLEARED") << "\n";
+        if (m_mitigationEnabled)
+        {
+            RemoveMitigation(swDpId, portNo);
+        }
+    }
+
+    wasSuspicious = isSuspicious;
+}
+
+void
+SdnController::InstallMitigation(uint64_t swDpId, uint32_t portNo)
+{
+    NS_LOG_FUNCTION(this << swDpId << portNo);
+
+    // Priority 200 beats our learned forwarding flows (100) and the
+    // table-miss entry (0), so this is checked first. No "apply:" clause at
+    // all means no instructions -- OpenFlow 1.3 drops anything that matches
+    // a flow entry with an empty instruction set.
+    std::ostringstream cmd;
+    cmd << "flow-mod cmd=add,table=0,prio=200 in_port=" << portNo;
+    DpctlExecute(swDpId, cmd.str());
+}
+
+void
+SdnController::RemoveMitigation(uint64_t swDpId, uint32_t portNo)
+{
+    NS_LOG_FUNCTION(this << swDpId << portNo);
+
+    std::ostringstream cmd;
+    cmd << "flow-mod cmd=del,table=0 in_port=" << portNo;
+    DpctlExecute(swDpId, cmd.str());
 }
 
 ofl_err

@@ -29,8 +29,28 @@ namespace ns3
  * topology, a per-source rate: exactly what Phase 9's threshold detection
  * needs.
  *
- * Phase 9-10 (threshold detection + mitigation flow-mod rules) build on
- * top of this monitoring data in the same class.
+ * Phase 9: threshold-based detection. No ML, no statistics beyond a
+ * straight comparison -- for each port, every time a new rate is computed
+ * (Phase 8), compare it against a fixed, configurable PacketRateThreshold
+ * (packets/sec). A port sending above the threshold is marked suspicious;
+ * a port that drops back below it is unmarked. Every rate sample is logged
+ * either way, and every transition (clean->suspicious or the reverse) is
+ * logged separately with the simulation time, so detection latency can be
+ * measured later from real data instead of guessed.
+ *
+ * Phase 10: mitigation. When a port is marked suspicious, the controller
+ * installs a high-priority DROP flow-mod matching that port (an OpenFlow
+ * flow-mod with no instructions silently drops anything it matches) --
+ * Option 1 from the project plan, simpler and more reliable than
+ * rate-limiting. The drop rule is removed again the moment the port's rate
+ * falls back under the threshold, so a source stops being blocked as soon
+ * as it stops flooding.
+ *
+ * Mitigation can be switched off per simulation (EnableMitigation
+ * attribute, default true) without touching detection: this is what lets
+ * the SAME controller class drive both "attack without mitigation"
+ * (Experiment 2) and "attack with detection and mitigation" (Experiment 3)
+ * from Phase 11, instead of duplicating the whole class.
  */
 class SdnController : public OFSwitch13Controller
 {
@@ -84,6 +104,20 @@ class SdnController : public OFSwitch13Controller
     std::ofstream m_monitorFile; //!< CSV output: time, port, MAC, rates.
     bool m_monitorFileOpen = false;
 
+    double m_pktRateThreshold; //!< Detection threshold, in packets/sec.
+    std::ofstream m_detectionFile; //!< CSV output: detection/clearance events.
+    bool m_detectionFileOpen = false;
+
+    /** Whether a port is currently considered to be flooding. */
+    typedef std::map<uint32_t, bool> PortSuspicionMap_t;
+
+    /** Switch datapath ID -> per-port suspicion state for that switch. */
+    typedef std::map<uint64_t, PortSuspicionMap_t> DatapathSuspicionMap_t;
+
+    DatapathSuspicionMap_t m_suspicious; //!< Current suspicion state, one map per switch.
+
+    bool m_mitigationEnabled; //!< Whether to actually install/remove DROP rules.
+
     /**
      * Send an OpenFlow port-stats request to the given switch, then
      * reschedule itself to run again after m_monitorInterval. Started once
@@ -96,11 +130,45 @@ class SdnController : public OFSwitch13Controller
     /**
      * Process one OFPMP_PORT_STATS multipart reply: for each port, compute
      * packets/sec and bytes/sec since the last poll, log it to the CSV
-     * output file, and update m_lastPortStats.
+     * output file, update m_lastPortStats, and run it through CheckThreshold.
      * \param swDpId The switch's datapath ID.
      * \param reply The parsed port-stats multipart reply.
      */
     void ProcessPortStatsReply(uint64_t swDpId, struct ofl_msg_multipart_reply_port* reply);
+
+    /**
+     * Compare one port's freshly computed rate against m_pktRateThreshold
+     * and update/log its suspicion state if it changed. This is the entire
+     * detection rule: no machine learning, no statistics beyond this single
+     * comparison, matching the project's rule/threshold-based requirement.
+     * \param swDpId The switch's datapath ID.
+     * \param portNo The port being evaluated.
+     * \param sourceMac Human-readable MAC label for this port, for logging.
+     * \param packetsPerSec The just-measured rate for this port.
+     */
+    void CheckThreshold(uint64_t swDpId,
+                        uint32_t portNo,
+                        const std::string& sourceMac,
+                        double packetsPerSec);
+
+    /**
+     * Install a high-priority DROP flow-mod for one switch port: a flow-mod
+     * matching in_port=portNo with no instructions at all, which OpenFlow
+     * 1.3 defines as "drop". Priority 200 is above both our learned
+     * forwarding flows (100) and the table-miss entry (0), so it is checked
+     * first and the source's traffic never reaches the rest of the pipeline.
+     * \param swDpId The switch's datapath ID.
+     * \param portNo The port to block.
+     */
+    void InstallMitigation(uint64_t swDpId, uint32_t portNo);
+
+    /**
+     * Remove the DROP flow-mod previously installed by InstallMitigation
+     * for this port, restoring normal forwarding for that source.
+     * \param swDpId The switch's datapath ID.
+     * \param portNo The port to unblock.
+     */
+    void RemoveMitigation(uint64_t swDpId, uint32_t portNo);
 };
 
 } // namespace ns3

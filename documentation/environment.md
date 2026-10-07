@@ -174,6 +174,22 @@ controlled experiment. Fixed by explicitly installing a plain
 devices before address assignment, which satisfies the "already has a
 root queue disc" guard that skips the auto-install.
 
+## Phase 11 gotcha: `GROUPS` is a reserved bash array name
+
+`scripts/run-experiments.sh` originally used a variable named `GROUPS` to
+hold the list of experiment groups to run. The script appeared to succeed
+(exit code 0, final "all finished" message) but silently ran nothing and
+created no result folders. Cause: bash has a special, dynamically-populated
+array variable called `$GROUPS` (the user's numeric group IDs, e.g. `1000
+100 27` for `amalr`) -- assigning to it doesn't raise an error, but bash
+keeps overriding it with the real group-ID list on every reference, so the
+script's own experiment-name list was never actually readable back.
+Renamed to `EXP_GROUPS` and confirmed working via `bash -x` tracing before
+re-running. Lesson: avoid all-caps variable names in bash scripts unless
+intentionally using a known bash/environment variable -- several short,
+innocuous-looking names (`GROUPS`, `HOSTNAME`, `RANDOM`, `SECONDS`, `UID`,
+`PPID`, ...) are reserved.
+
 ## Notes for later phases
 
 - `FlowMonitorHelper::InstallAll()` also monitors the OpenFlow control
