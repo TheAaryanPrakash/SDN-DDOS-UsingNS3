@@ -194,11 +194,16 @@ def write_summary_csv():
         "avgDelayMs",
         "detectionDelaySec",
     ]
+    rounded_fields = {"lossPct", "throughputMbps", "avgDelayMs", "detectionDelaySec"}
     with open(out, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         for row in rows:
-            writer.writerow({k: row.get(k) for k in fieldnames})
+            out_row = {}
+            for k in fieldnames:
+                v = row.get(k)
+                out_row[k] = round(v, 3) if (k in rounded_fields and v is not None) else v
+            writer.writerow(out_row)
     print(f"  wrote {out}")
 
 
