@@ -5,10 +5,10 @@ launches a DDoS flood against a victim server, detects the attacker using
 simple traffic-rate thresholds (no ML/AI), and mitigates it by pushing an
 OpenFlow flow rule from the controller to the switch.
 
-Status: through Phase 11 of 13 (environment, SDN build, controller with
-monitoring/detection/mitigation, and the full experiment matrix are done).
-This README will get a full pass in Phase 13 (final project); for now, the
-essentials below are enough to build on.
+Status: through Phase 12 of 13 (environment, SDN build, controller with
+monitoring/detection/mitigation, the full experiment matrix, and graphs are
+done). This README will get a full pass in Phase 13 (final project); for
+now, the essentials below are enough to build on.
 
 ## Quick start (inside WSL, as user `amalr`)
 
@@ -60,14 +60,38 @@ Each run produces, in its `results/` subfolder:
 - `switch-stats-*.log` -- OFSwitch13's own datapath performance counters.
 - `host-*.pcap` -- per-port packet captures (skipped when a run passes `--enablePcap=false`, used for the bulk sweep experiments 4-6 to save time/disk).
 
+## Graphs (Phase 12)
+
+After `run-experiments.sh` has populated `results/`, generate the graphs
+(runs on plain Windows/WSL Python + matplotlib, no ns-3 needed -- it only
+reads the CSV/XML files the simulations already wrote):
+
+```bash
+cd scripts/analysis
+python generate_graphs.py
+```
+
+This reads `results/exp*/flowmon.xml` and `detections.csv`, writes four
+PNGs to `graphs/`, and a per-experiment `results/summary.csv`. Every number
+plotted is read from a real simulation output file -- nothing here is
+estimated or hand-entered. `scripts/analysis/common.py` has the parsing
+logic if you want to reuse it for extra plots.
+
+| File | Shows |
+|---|---|
+| `01_before_after_mitigation.png` | Legit loss % and throughput: normal vs. unmitigated attack vs. mitigated attack. The project's headline result. |
+| `02_attack_intensity_sweep.png` | Legit throughput/loss/delay vs. attack rate (5/20/50 Mbps), mitigation active. |
+| `03_detection_threshold_sweep.png` | Detection latency and legit loss vs. threshold (200/1000/5000 pkt/s). Bars are flat because this particular attack is far above all three thresholds -- a real result, not a bug (see `documentation/environment.md`). |
+| `04_multi_attacker_comparison.png` | Legit loss and detection latency: 1 vs. 3 simultaneous attackers. |
+
 ## Repo layout
 
 - `simulations/` — our NS-3 `.cc` simulation scripts (the actual network topologies: baseline, attack, mitigation).
 - `src/controller/` — custom SDN controller logic (traffic monitoring, threshold detection, mitigation rule installation).
 - `src/apps/` — custom NS-3 applications (e.g. the flooding attacker traffic generator), if the built-in ones aren't enough.
-- `scripts/` — shell scripts to sync this folder into the WSL NS-3 build and run it, plus Python scripts for turning result CSVs into graphs.
-- `results/` — raw CSV/log output from simulation runs, one subfolder per experiment.
-- `graphs/` — PNG plots generated from `results/` by the Python scripts.
+- `scripts/` — `sync-build-run.sh`/`run-experiments.sh` (sync into WSL NS-3 build and run), `scripts/analysis/` (Python: turn `results/` into graphs).
+- `results/` — raw CSV/XML/log output from simulation runs, one subfolder per experiment, plus `summary.csv` (Phase 12).
+- `graphs/` — PNG plots generated from `results/` by `scripts/analysis/generate_graphs.py`.
 - `logs/` — build and run logs kept for debugging/reproducibility.
 - `documentation/` — environment notes, design decisions, diagrams.
 
