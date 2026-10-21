@@ -1,145 +1,352 @@
+<!doctype html>
+<html lang="en">
+<head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SDN DDoS Shield</title>
-<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="A real OpenFlow 1.3 control pipeline simulated end-to-end in NS-3: legitimate traffic, a UDP flood, threshold-based detection, and automatic DROP-flow mitigation — with a live interactive replay of the real results.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
 <style>
-/* Visual world: a network signal-monitor console. Near-black ground with a faint
-   graph-paper grid, flat hairline panels (no soft cards or shadows), monospace chrome,
-   and "// " code-comment section labels. Single committed dark theme. Role colors read
-   as traffic signals: green legit, red attacker, amber control-plane, cyan switch. */
+/* ============================================================
+   DESIGN TOKENS
+   ============================================================ */
 :root{
-  --bg:#080b0e; --panel:#0e1317; --panel-2:#0b0f13; --inset:#131a20;
-  --fg:#d4ddd8; --muted:#73858a; --faint:#4c5c63; --line:#1b242b;
-  --accent:#f2a93b;            /* control plane / controller — amber */
-  --client:#49dd97; --attacker:#ff4d63; --server:#e9eedd; --switch:#4fcfe3;
-  --ok:#49dd97; --warn:#f2a93b; --crit:#ff4d63;
-  --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
-  --sans:"IBM Plex Sans",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-  color-scheme:dark;
+  /* core surfaces */
+  --bg:#06070b;
+  --bg-soft:#0a0c12;
+  --panel:#10121a;        /* demo-window flat panel bg (reused by sim JS) */
+  --inset:#161926;        /* demo-window inset bg (reused by sim JS) */
+  --fg:#f3f4f9;            /* reused by sim JS */
+  --muted:#8e96ab;         /* reused by sim JS */
+  --faint:#555d72;         /* reused by sim JS */
+  --line:#20232f;          /* reused by sim JS */
+  --accent:#f0b429;        /* controller / threshold amber, reused by sim JS */
+  --client:#34d399;        /* reused by sim JS */
+  --attacker:#fb7185;      /* reused by sim JS */
+  --server:#eef1f8;        /* reused by sim JS */
+  --switch:#22d3ee;        /* reused by sim JS */
+  --ok:#34d399;            /* reused by sim JS */
+  --warn:#f0b429;          /* reused by sim JS */
+  --crit:#fb7185;          /* reused by sim JS */
+
+  /* site chrome (new design system) */
+  --brand:#7c6cf6;
+  --brand-2:#38bdf8;
+  --brand-grad: linear-gradient(135deg,var(--brand),var(--brand-2));
+  --surface: rgba(255,255,255,.045);
+  --surface-hover: rgba(255,255,255,.075);
+  --border: rgba(255,255,255,.09);
+  --border-strong: rgba(255,255,255,.18);
+  --text: var(--fg);
+  --text-dim: var(--muted);
+  --text-faint: var(--faint);
+
+  --radius-sm:10px;
+  --radius:18px;
+  --radius-lg:26px;
+  --shadow: 0 20px 60px -20px rgba(0,0,0,.6);
+  --shadow-sm: 0 8px 24px -8px rgba(0,0,0,.5);
+  --glow-brand: 0 0 1px rgba(124,108,246,.6), 0 0 60px -8px rgba(124,108,246,.55);
+  --glow-cyan: 0 0 60px -12px rgba(56,189,248,.45);
+
+  --font-sans:'Inter',system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --font-mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+
+  --nav-h:72px;
+  color-scheme: dark;
 }
-*{box-sizing:border-box}
-body{background-color:var(--bg);color:var(--fg);font-family:var(--mono);font-size:13px;line-height:1.5;margin:0;
-  -webkit-font-smoothing:antialiased;
-  background-image:linear-gradient(rgba(130,160,165,.035) 1px,transparent 1px),
-    linear-gradient(90deg,rgba(130,160,165,.035) 1px,transparent 1px);
-  background-size:30px 30px}
-.wrap{max-width:1180px;margin:0 auto;
-  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));}
-h1,h2,h3{margin:0;text-wrap:balance}
 
-/* ---- header ---- */
-body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:20;background:var(--panel)}
-header{position:sticky;top:env(safe-area-inset-top,0px);z-index:15;background:var(--panel);border-bottom:1px solid var(--line)}
-.head{display:flex;align-items:center;gap:14px;padding-block:13px;flex-wrap:wrap}
-.brand{display:flex;align-items:center;gap:11px;min-width:0}
-.logo{width:32px;height:32px;flex:none}
-.brand h1{font-family:var(--sans);font-size:18px;font-weight:700;letter-spacing:-.025em;white-space:nowrap}
-.brand .sub{font-size:11px;color:var(--muted);letter-spacing:.01em}
-.head .src{margin-left:auto;font-size:10.5px;color:var(--faint);
-  display:flex;align-items:center;gap:8px;text-align:right;letter-spacing:.01em}
-.dot{width:7px;height:7px;background:var(--ok);flex:none;animation:blink 1.6s steps(2) infinite}
+/* ============================================================
+   RESET & BASE
+   ============================================================ */
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;background:var(--bg);color:var(--text);
+  font-family:var(--font-sans);font-size:16px;line-height:1.6;
+  -webkit-font-smoothing:antialiased;overflow-x:hidden;
+}
+h1,h2,h3,h4{margin:0;font-family:var(--font-sans);letter-spacing:-.02em}
+p{margin:0}
+a{color:inherit}
+img{max-width:100%;display:block}
+button{font-family:inherit}
+.container{max-width:1240px;margin:0 auto;padding:0 28px}
+@media (max-width:640px){.container{padding:0 20px}}
 
-/* ---- control bar ---- */
-.controls{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding-block:13px}
-button{font-family:var(--mono);font-size:12.5px;font-weight:500;color:var(--fg);background:var(--panel-2);
-  border:1px solid var(--line);border-radius:3px;padding:8px 13px;cursor:pointer;display:inline-flex;
-  align-items:center;gap:7px;transition:border-color .12s,background .12s,color .12s}
-button:hover{border-color:var(--muted)}
-button:active{transform:translateY(1px)}
-button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-button.primary{background:var(--accent);border-color:var(--accent);color:#0a0d0a;font-weight:600}
-button.primary:hover{filter:brightness(1.08)}
-.seg{display:inline-flex;border:1px solid var(--line);border-radius:3px;overflow:hidden}
-.seg button{border:0;border-radius:0;background:transparent;padding:8px 12px}
-.seg button[aria-pressed="true"]{background:var(--accent);color:#0a0d0a;font-weight:600}
+::selection{background:rgba(124,108,246,.35);color:#fff}
+::-webkit-scrollbar{width:11px;height:11px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:#262a3a;border-radius:8px;border:3px solid var(--bg)}
+::-webkit-scrollbar-thumb:hover{background:#343a50}
+
+/* ============================================================
+   BACKGROUND FX (fixed, behind everything)
+   ============================================================ */
+.bg-fx{position:fixed;inset:0;z-index:-2;overflow:hidden;background:var(--bg)}
+.bg-fx .blob{position:absolute;border-radius:50%;filter:blur(90px);opacity:.55;will-change:transform}
+.bg-fx .b1{width:640px;height:640px;top:-220px;left:-160px;background:radial-gradient(circle,rgba(124,108,246,.55),transparent 70%)}
+.bg-fx .b2{width:560px;height:560px;top:180px;right:-200px;background:radial-gradient(circle,rgba(56,189,248,.4),transparent 70%)}
+.bg-fx .b3{width:520px;height:520px;bottom:-260px;left:30%;background:radial-gradient(circle,rgba(251,113,133,.22),transparent 70%)}
+.bg-fx .grid-overlay{
+  position:absolute;inset:0;
+  background-image:linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px);
+  background-size:42px 42px;
+  mask-image:radial-gradient(ellipse 80% 60% at 50% 0%, black 40%, transparent 90%);
+}
+.bg-fx .noise{position:absolute;inset:0;opacity:.025;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+@keyframes driftA{0%{transform:translate(0,0)}50%{transform:translate(40px,60px)}100%{transform:translate(0,0)}}
+@keyframes driftB{0%{transform:translate(0,0)}50%{transform:translate(-50px,30px)}100%{transform:translate(0,0)}}
+@keyframes driftC{0%{transform:translate(0,0)}50%{transform:translate(30px,-40px)}100%{transform:translate(0,0)}}
+.bg-fx .b1{animation:driftA 22s ease-in-out infinite}
+.bg-fx .b2{animation:driftB 26s ease-in-out infinite}
+.bg-fx .b3{animation:driftC 24s ease-in-out infinite}
+
+/* ============================================================
+   REVEAL-ON-SCROLL UTILITIES
+   ============================================================ */
+.reveal{opacity:0;transform:translateY(26px);transition:opacity .7s cubic-bezier(.2,.7,.2,1),transform .7s cubic-bezier(.2,.7,.2,1);transition-delay:calc(var(--d,0) * 70ms)}
+.reveal.in{opacity:1;transform:translateY(0)}
+.reveal-scale{opacity:0;transform:scale(.94);transition:opacity .7s ease,transform .7s cubic-bezier(.2,.7,.2,1);transition-delay:calc(var(--d,0) * 70ms)}
+.reveal-scale.in{opacity:1;transform:scale(1)}
+@media (prefers-reduced-motion:reduce){
+  .reveal,.reveal-scale{opacity:1!important;transform:none!important;transition:none!important}
+  .bg-fx .blob{animation:none!important}
+  *{animation-duration:.01ms!important;scroll-behavior:auto!important}
+}
+
+/* ============================================================
+   NAV
+   ============================================================ */
+.topnav{position:fixed;top:0;left:0;right:0;z-index:100;height:var(--nav-h);
+  display:flex;align-items:center;
+  background:rgba(8,9,14,.62);backdrop-filter:blur(18px) saturate(140%);
+  border-bottom:1px solid var(--border);transition:background .3s,border-color .3s}
+.nav-inner{width:100%;max-width:1240px;margin:0 auto;padding:0 28px;display:flex;align-items:center;gap:20px}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none;font-weight:700;font-size:15px;color:var(--text);white-space:nowrap}
+.brand .logo{width:30px;height:30px;flex:none}
+.brand .sub{display:block;font-weight:400;font-size:10.5px;color:var(--text-faint);letter-spacing:.02em}
+.nav-links{list-style:none;display:flex;gap:2px;margin:0 0 0 12px;padding:0;flex:1}
+.nav-links a{display:inline-block;padding:8px 13px;border-radius:999px;font-size:13px;font-weight:500;color:var(--text-dim);text-decoration:none;transition:color .2s,background .2s}
+.nav-links a:hover{color:var(--text);background:var(--surface)}
+.nav-links a.active{color:var(--fg);background:var(--surface-hover)}
+.nav-cta{margin-left:auto;display:inline-flex;align-items:center;gap:8px;padding:9px 16px;border-radius:999px;
+  background:var(--surface);border:1px solid var(--border-strong);font-size:13px;font-weight:600;text-decoration:none;
+  transition:background .2s,border-color .2s,transform .2s}
+.nav-cta:hover{background:var(--surface-hover);border-color:var(--brand);transform:translateY(-1px)}
+.nav-toggle{display:none;background:none;border:1px solid var(--border);border-radius:9px;color:var(--text);width:40px;height:40px;align-items:center;justify-content:center;cursor:pointer;margin-left:auto}
+.nav-toggle svg{width:19px;height:19px}
+.nav-progress{position:absolute;left:0;bottom:-1px;height:2px;width:100%;background:var(--brand-grad);transform:scaleX(0);transform-origin:0 50%}
+
+@media (max-width:980px){
+  .nav-links{position:fixed;top:var(--nav-h);left:0;right:0;flex-direction:column;gap:2px;
+    background:rgba(8,9,14,.97);backdrop-filter:blur(18px);border-bottom:1px solid var(--border);
+    padding:10px 20px 18px;max-height:0;overflow:hidden;opacity:0;transition:max-height .35s ease,opacity .25s ease}
+  .nav-links.open{max-height:420px;opacity:1}
+  .nav-links a{padding:11px 10px;border-radius:10px}
+  .nav-toggle{display:inline-flex}
+  .nav-cta{display:none}
+}
+
+/* ============================================================
+   BUTTONS (site chrome)
+   ============================================================ */
+.btn{display:inline-flex;align-items:center;gap:9px;padding:13px 22px;border-radius:999px;font-size:14.5px;font-weight:600;
+  text-decoration:none;border:1px solid var(--border-strong);color:var(--text);background:var(--surface);
+  transition:transform .2s,background .2s,border-color .2s,box-shadow .2s;cursor:pointer}
+.btn:hover{background:var(--surface-hover);transform:translateY(-2px)}
+.btn-primary{background:var(--brand-grad);border-color:transparent;color:#fff;box-shadow:var(--glow-brand)}
+.btn-primary:hover{filter:brightness(1.08);transform:translateY(-2px)}
+.btn svg{width:16px;height:16px}
+
+/* ============================================================
+   HERO
+   ============================================================ */
+.hero{position:relative;min-height:100vh;display:flex;flex-direction:column;justify-content:center;
+  padding:calc(var(--nav-h) + 40px) 0 80px;overflow:hidden;scroll-margin-top:var(--nav-h)}
+#heroCanvas{position:absolute;inset:0;width:100%;height:100%;opacity:.55;pointer-events:none}
+.hero-inner{position:relative;z-index:1;text-align:center}
+.eyebrow-row{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-bottom:26px}
+.tag{display:inline-flex;align-items:center;gap:7px;padding:7px 14px;border-radius:999px;background:var(--surface);
+  border:1px solid var(--border);font-size:12px;font-weight:600;color:var(--text-dim);letter-spacing:.02em}
+.tag .dot{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 8px var(--ok)}
+.hero h1{font-size:clamp(2.6rem,6vw,4.6rem);font-weight:800;line-height:1.05;letter-spacing:-.03em;max-width:980px;margin:0 auto 22px}
+.hero h1 .grad{background:var(--brand-grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero-sub{max-width:660px;margin:0 auto 38px;font-size:18px;line-height:1.65;color:var(--text-dim)}
+.hero-cta{display:flex;justify-content:center;gap:14px;flex-wrap:wrap;margin-bottom:72px}
+
+.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;max-width:920px;margin:0 auto;
+  background:var(--border);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.stat-card{background:rgba(10,11,17,.75);backdrop-filter:blur(10px);padding:22px 14px;text-align:center}
+.stat-card .v{font-family:var(--font-mono);font-size:clamp(1.5rem,3vw,2.1rem);font-weight:700;letter-spacing:-.01em}
+.stat-card.c-bad .v{color:var(--crit)}
+.stat-card.c-good .v{color:var(--ok)}
+.stat-card.c-brand .v{background:var(--brand-grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.stat-card .l{font-size:11.5px;color:var(--text-faint);margin-top:6px;letter-spacing:.01em}
+@media (max-width:760px){.stat-grid{grid-template-columns:repeat(2,1fr)}}
+
+.scroll-cue{position:absolute;left:50%;bottom:26px;transform:translateX(-50%);display:flex;flex-direction:column;
+  align-items:center;gap:8px;color:var(--text-faint);font-size:11px;letter-spacing:.08em;text-transform:uppercase;z-index:1}
+.scroll-cue .wheel{width:22px;height:34px;border:1.5px solid var(--border-strong);border-radius:12px;position:relative}
+.scroll-cue .wheel::after{content:"";position:absolute;top:6px;left:50%;width:3px;height:7px;background:var(--brand-2);
+  border-radius:3px;transform:translateX(-50%);animation:wheelMove 1.8s ease infinite}
+@keyframes wheelMove{0%{opacity:1;top:6px}70%{opacity:0;top:18px}100%{opacity:0;top:6px}}
+
+/* pipeline strip */
+.pipe-wrap{margin:84px auto 0;max-width:1080px;position:relative;z-index:1}
+.pipeline{display:flex;justify-content:space-between;gap:6px;position:relative}
+.pipeline::before{content:"";position:absolute;top:19px;left:4%;right:4%;height:1px;
+  background:linear-gradient(90deg,transparent,var(--border-strong) 10%,var(--border-strong) 90%,transparent)}
+.pstep{position:relative;flex:1;display:flex;flex-direction:column;align-items:center;text-align:center;min-width:0}
+.pstep .dot{width:40px;height:40px;border-radius:50%;background:var(--bg-soft);border:1.5px solid var(--border-strong);
+  display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:12px;font-weight:700;
+  color:var(--text-dim);margin-bottom:12px;position:relative;z-index:1;transition:border-color .3s,color .3s,box-shadow .3s}
+.pstep:hover .dot{border-color:var(--brand);color:#fff;box-shadow:0 0 0 5px rgba(124,108,246,.14)}
+.pstep .lbl{font-size:11.5px;font-weight:600;color:var(--text-dim);max-width:92px}
+@media (max-width:900px){.pipe-wrap{display:none}}
+
+/* ============================================================
+   SECTIONS (generic)
+   ============================================================ */
+.section{position:relative;padding:118px 0;scroll-margin-top:calc(var(--nav-h) + 8px)}
+.section + .section{border-top:1px solid var(--border)}
+.section-head{max-width:720px;margin:0 0 56px}
+.section-head.center{margin-left:auto;margin-right:auto;text-align:center}
+.eyebrow{display:inline-flex;align-items:center;gap:8px;font-family:var(--font-mono);font-size:12px;font-weight:600;
+  color:var(--brand-2);letter-spacing:.1em;text-transform:uppercase;margin-bottom:16px}
+.eyebrow::before{content:"";width:18px;height:1.5px;background:var(--brand-2)}
+.section-head h2{font-size:clamp(1.9rem,3.4vw,2.6rem);font-weight:800;margin-bottom:16px}
+.section-head p{font-size:16.5px;line-height:1.7;color:var(--text-dim)}
+
+/* ============================================================
+   GLASS CARD SYSTEM (site chrome, distinct from demo-window look)
+   ============================================================ */
+.glass-card{background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02));
+  border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-sm);
+  transition:transform .35s cubic-bezier(.2,.7,.2,1),border-color .35s,box-shadow .35s}
+.glass-card:hover{transform:translateY(-4px);border-color:var(--border-strong);box-shadow:var(--shadow)}
+
+/* ============================================================
+   LIVE DEMO — window chrome
+   ============================================================ */
+.window{border-radius:var(--radius-lg);overflow:hidden;border:1px solid var(--border-strong);
+  box-shadow:var(--shadow),0 0 0 1px rgba(255,255,255,.02) inset;background:var(--bg-soft)}
+.window-bar{display:flex;align-items:center;gap:10px;padding:14px 20px;background:#0c0e15;border-bottom:1px solid var(--line)}
+.wdot{width:10px;height:10px;border-radius:50%}
+.wdot.r{background:#fb7185}.wdot.y{background:#f0b429}.wdot.g{background:#34d399}
+.window-title{margin-left:10px;font-family:var(--font-mono);font-size:12px;color:var(--text-dim)}
+.window-live{margin-left:auto;display:flex;align-items:center;gap:7px;font-family:var(--font-mono);font-size:10.5px;
+  color:var(--text-faint);letter-spacing:.06em;text-transform:uppercase}
+.live-dot{width:7px;height:7px;border-radius:50%;background:var(--ok);animation:blink 1.6s steps(2) infinite}
+.window-body{padding:24px;background:
+  linear-gradient(rgba(255,255,255,.02) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.02) 1px,transparent 1px);
+  background-size:28px 28px;background-color:var(--panel)}
+@media (max-width:640px){.window-body{padding:16px}}
+
+/* ---- controls ---- */
+.controls{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding-bottom:16px}
+button.dbtn{font-family:var(--font-mono);font-size:12.5px;font-weight:500;color:var(--fg);background:var(--inset);
+  border:1px solid var(--line);border-radius:8px;padding:9px 14px;cursor:pointer;display:inline-flex;
+  align-items:center;gap:7px;transition:border-color .12s,background .12s,color .12s,transform .12s}
+button.dbtn:hover{border-color:var(--muted);transform:translateY(-1px)}
+button.dbtn:active{transform:translateY(0)}
+button.dbtn.primary{background:var(--brand-grad);border-color:transparent;color:#fff;font-weight:600}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{border:0;border-radius:0;background:transparent;padding:9px 13px;font-family:var(--font-mono);font-size:12.5px;color:var(--fg);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);color:#17130a;font-weight:700}
 .spc{flex:1 1 auto}
-.toggle{display:inline-flex;align-items:center;gap:9px;border:1px solid var(--line);border-radius:3px;
-  padding:6px 12px 6px 13px;background:var(--panel-2);font-size:12px;cursor:pointer}
-.toggle .sw{width:34px;height:18px;border-radius:2px;background:var(--inset);border:1px solid var(--line);position:relative;transition:background .16s,border-color .16s;flex:none}
-.toggle .sw::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:1px;
+.toggle{display:inline-flex;align-items:center;gap:9px;border:1px solid var(--line);border-radius:8px;
+  padding:7px 14px 7px 14px;background:var(--inset);font-size:12px;cursor:pointer;font-family:var(--font-mono)}
+.toggle .sw{width:34px;height:18px;border-radius:999px;background:var(--bg);border:1px solid var(--line);position:relative;transition:background .16s,border-color .16s;flex:none}
+.toggle .sw::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;
   background:var(--muted);transition:transform .16s,background .16s}
-.toggle[aria-pressed="true"] .sw{background:color-mix(in srgb,var(--ok) 22%,transparent);border-color:var(--ok)}
+.toggle[aria-pressed="true"] .sw{background:color-mix(in srgb,var(--ok) 25%,transparent);border-color:var(--ok)}
 .toggle[aria-pressed="true"] .sw::after{transform:translateX(16px);background:var(--ok)}
 .toggle .lab{color:var(--muted);letter-spacing:.01em}
 .toggle[aria-pressed="true"] .lab{color:var(--fg)}
+.wu-link{font-family:var(--font-mono);font-size:12px;color:var(--text-dim);text-decoration:none;border:1px solid var(--line);
+  border-radius:8px;padding:9px 14px;transition:color .2s,border-color .2s}
+.wu-link:hover{color:var(--fg);border-color:var(--muted)}
 
 /* ---- timeline ---- */
-.timeline{padding-bottom:16px}
+.timeline{padding-bottom:20px}
 .tl-row{display:flex;align-items:center;gap:13px}
-.tl-clock{font-size:15px;font-weight:600;min-width:118px;color:var(--fg);font-variant-numeric:tabular-nums}
+.tl-clock{font-family:var(--font-mono);font-size:15px;font-weight:600;min-width:118px;color:var(--fg);font-variant-numeric:tabular-nums}
 .tl-clock small{color:var(--muted);font-weight:400;font-size:11px}
 .track{position:relative;flex:1;height:30px;cursor:pointer;touch-action:none}
-.track .rail{position:absolute;top:13px;left:0;right:0;height:4px;background:var(--inset);border:1px solid var(--line);overflow:hidden}
-.track .fill{position:absolute;inset:0;width:0;background:var(--accent)}
+.track .rail{position:absolute;top:13px;left:0;right:0;height:4px;border-radius:3px;background:var(--inset);border:1px solid var(--line);overflow:hidden}
+.track .fill{position:absolute;inset:0;width:0;background:var(--brand-grad)}
 .track .mk{position:absolute;top:3px;width:1px;height:24px}
-.track .mk span{position:absolute;top:-15px;left:50%;transform:translateX(-50%);font-size:9px;
+.track .mk span{position:absolute;top:-15px;left:50%;transform:translateX(-50%);font-family:var(--font-mono);font-size:9px;
   white-space:nowrap;letter-spacing:.02em}
-.track .head{position:absolute;top:8px;width:12px;height:12px;background:var(--accent);
-  transform:translate(-50%,0) rotate(45deg);border:1px solid var(--bg)}
+.track .head{position:absolute;top:8px;width:12px;height:12px;background:var(--brand-2);
+  transform:translate(-50%,0) rotate(45deg);border:1px solid var(--bg);box-shadow:0 0 10px rgba(56,189,248,.7)}
 
 /* ---- grid ---- */
-.grid{display:grid;grid-template-columns:1.52fr 1fr;gap:14px;padding-bottom:28px;align-items:start}
+.grid{display:grid;grid-template-columns:1.52fr 1fr;gap:16px;align-items:start}
 @media (max-width:860px){.grid{grid-template-columns:1fr}}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:3px}
-.card .ch{display:flex;align-items:center;gap:9px;padding:10px 14px;border-bottom:1px solid var(--line)}
-.card .ch h3{font-size:12px;font-weight:500;color:var(--fg);letter-spacing:.01em}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px}
+.card .ch{display:flex;align-items:center;gap:9px;padding:11px 15px;border-bottom:1px solid var(--line)}
+.card .ch h3{font-size:12px;font-weight:600;color:var(--fg);letter-spacing:.01em;font-family:var(--font-mono)}
 .card .ch h3::before{content:"// ";color:var(--muted)}
-.card .ch .badge{margin-left:auto;font-size:10px;color:var(--faint);letter-spacing:.02em}
-.col{display:flex;flex-direction:column;gap:14px;min-width:0}
+.card .ch .badge{margin-left:auto;font-size:10px;color:var(--faint);letter-spacing:.02em;font-family:var(--font-mono)}
+.col{display:flex;flex-direction:column;gap:16px;min-width:0}
 
 /* topology */
 .topo-card .body{position:relative}
 #topo{display:block;width:100%;height:auto;aspect-ratio:16/12.2;max-width:100%}
 @media (max-width:860px){#topo{aspect-ratio:16/13.5}}
-.status-strip{display:flex;align-items:center;gap:11px;padding:11px 14px;border-top:1px solid var(--line);flex-wrap:wrap}
-.pill{display:inline-flex;align-items:center;gap:8px;font-size:11.5px;font-weight:600;padding:5px 10px;border-radius:2px;
-  letter-spacing:.06em;text-transform:uppercase;border:1px solid}
-.pill .pdot{width:8px;height:8px}
-.pill.ok{color:var(--ok);background:color-mix(in srgb,var(--ok) 9%,transparent);border-color:color-mix(in srgb,var(--ok) 38%,transparent)}
+.status-strip{display:flex;align-items:center;gap:11px;padding:11px 15px;border-top:1px solid var(--line);flex-wrap:wrap}
+.pill{display:inline-flex;align-items:center;gap:8px;font-size:11.5px;font-weight:700;padding:5px 10px;border-radius:999px;
+  letter-spacing:.06em;text-transform:uppercase;border:1px solid;font-family:var(--font-mono)}
+.pill .pdot{width:8px;height:8px;border-radius:50%}
+.pill.ok{color:var(--ok);background:color-mix(in srgb,var(--ok) 10%,transparent);border-color:color-mix(in srgb,var(--ok) 40%,transparent)}
 .pill.ok .pdot{background:var(--ok)}
 .pill.crit{color:var(--crit);background:color-mix(in srgb,var(--crit) 10%,transparent);border-color:color-mix(in srgb,var(--crit) 42%,transparent)}
 .pill.crit .pdot{background:var(--crit);animation:blink .9s steps(2) infinite}
 .pill.mit{color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,transparent);border-color:color-mix(in srgb,var(--accent) 42%,transparent)}
 .pill.mit .pdot{background:var(--accent)}
 @keyframes blink{50%{opacity:.2}}
-.phase-note{font-family:var(--sans);font-size:12px;color:var(--muted);min-width:0}
+.phase-note{font-size:12px;color:var(--muted);min-width:0}
 
 /* metric tiles */
-.tiles{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);overflow:hidden;border:1px solid var(--line);border-radius:3px}
-.tile{background:var(--panel);padding:12px 14px}
-.tile .k{font-size:10px;color:var(--muted);letter-spacing:.02em}
-.tile .k::before{content:"· "}
-.tile .v{font-size:23px;font-weight:600;margin-top:4px;letter-spacing:-.01em;line-height:1.1;font-variant-numeric:tabular-nums}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);overflow:hidden;border:1px solid var(--line);border-radius:10px}
+.tile{background:var(--panel);padding:13px 15px}
+.tile .k{font-size:10px;color:var(--muted);letter-spacing:.02em;font-family:var(--font-mono)}
+.tile .k::before{content:"\00b7 "}
+.tile .v{font-size:23px;font-weight:700;margin-top:4px;letter-spacing:-.01em;line-height:1.1;font-variant-numeric:tabular-nums;font-family:var(--font-mono)}
 .tile .u{font-size:11px;color:var(--faint);font-weight:400}
 .tile.alarm .v{color:var(--crit)}
 
 /* chart */
 #chart{display:block;width:100%;height:auto;aspect-ratio:16/8;padding:10px 12px 4px}
-.legend{display:flex;gap:16px;flex-wrap:wrap;padding:4px 14px 12px;font-size:11px;color:var(--muted)}
+.legend{display:flex;gap:16px;flex-wrap:wrap;padding:4px 15px 13px;font-size:11px;color:var(--muted);font-family:var(--font-mono)}
 .legend span{display:inline-flex;align-items:center;gap:7px}
 .legend i{width:14px;height:2px;display:inline-block}
 
-/* flow table — reads like dpctl output */
+/* flow table */
 .flows{padding:7px 8px 9px}
-.flow{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:7px 9px;border-radius:2px;
-  font-size:11.5px;border:1px solid transparent}
+.flow{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:7px 9px;border-radius:6px;
+  font-size:11.5px;border:1px solid transparent;font-family:var(--font-mono)}
 .flow+.flow{margin-top:2px}
 .flow .prio{color:var(--faint);font-size:10.5px}
 .flow .match{color:var(--fg);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.flow .act{font-weight:600;font-size:10px;padding:2px 7px;border-radius:2px;letter-spacing:.04em}
+.flow .act{font-weight:700;font-size:10px;padding:2px 7px;border-radius:4px;letter-spacing:.04em}
 .flow.fwd .act{color:var(--ok);background:color-mix(in srgb,var(--ok) 13%,transparent)}
 .flow.miss .act{color:var(--muted);background:var(--inset)}
 .flow.drop{background:color-mix(in srgb,var(--crit) 8%,transparent);border-color:color-mix(in srgb,var(--crit) 34%,transparent)}
-.flow.drop .act{color:#0a0d0a;background:var(--crit)}
+.flow.drop .act{color:#1b0a0d;background:var(--crit)}
 .flow .mc{color:var(--faint);font-size:10px;grid-column:2;margin-top:-3px}
 .flow.new{animation:popin .4s ease}
 @keyframes popin{from{opacity:0;transform:translateY(-6px)}}
 
 /* log */
 .log{padding:7px 6px;max-height:224px;overflow:auto;display:flex;flex-direction:column;gap:1px}
-.le{display:grid;grid-template-columns:54px 1fr;gap:9px;padding:5px 9px;border-radius:2px;font-size:11.5px;align-items:baseline;border-left:2px solid transparent}
+.le{display:grid;grid-template-columns:54px 1fr;gap:9px;padding:5px 9px;border-radius:6px;font-size:11.5px;align-items:baseline;border-left:2px solid transparent;font-family:var(--font-mono)}
 .le .t{font-size:10.5px;color:var(--faint)}
 .le .m{min-width:0;color:var(--fg)}
 .le.warn{border-left-color:var(--warn)}
@@ -151,486 +358,729 @@ button.primary:hover{filter:brightness(1.08)}
 .le .m b{font-weight:600}
 
 /* outcome */
-.outcome{padding:14px 14px;display:flex;flex-direction:column;gap:13px}
+.outcome{padding:15px 15px;display:flex;flex-direction:column;gap:13px}
 .ob{display:flex;flex-direction:column;gap:5px}
-.ob .obh{display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted)}
-.ob .obh .r{font-weight:600;font-variant-numeric:tabular-nums}
-.bar{height:10px;background:var(--inset);border:1px solid var(--line);overflow:hidden;position:relative}
-.bar i{position:absolute;inset:0;width:0;transition:width .9s cubic-bezier(.3,.8,.3,1)}
-.ob.att .bar i{background:var(--crit)} .ob.att .obh .r{color:var(--crit)}
-.ob.mit .bar i{background:var(--ok)} .ob.mit .obh .r{color:var(--ok)}
+.ob .obh{display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);font-family:var(--font-mono)}
+.ob .obh .r{font-weight:700;font-variant-numeric:tabular-nums}
+.obar{height:10px;background:var(--inset);border:1px solid var(--line);overflow:hidden;position:relative;border-radius:999px}
+.obar i{position:absolute;inset:0;width:0;transition:width .9s cubic-bezier(.3,.8,.3,1);border-radius:999px}
+.ob.att .obar i{background:var(--crit)} .ob.att .obh .r{color:var(--crit)}
+.ob.mit .obar i{background:var(--ok)} .ob.mit .obh .r{color:var(--ok)}
 .ob.cur .obh{color:var(--fg)}
-.ob.cur .obh::after{content:" ◂ now";color:var(--faint);font-weight:400}
-.outcome .foot{font-size:10.5px;color:var(--faint);border-top:1px solid var(--line);padding-top:10px;line-height:1.6}
+.ob.cur .obh::after{content:" \25c2 now";color:var(--faint);font-weight:400}
+.outcome .foot{font-size:10.5px;color:var(--faint);border-top:1px solid var(--line);padding-top:10px;line-height:1.6;font-family:var(--font-mono)}
 .outcome .foot b{color:var(--muted)}
 
-.how{padding:0 0 32px}
-.how .card{padding:16px 16px}
-.how h2{font-size:12px;font-weight:500;color:var(--fg);margin-bottom:14px;letter-spacing:.01em}
-.how h2::before{content:"// ";color:var(--muted)}
-.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;counter-reset:s}
-.step{position:relative;padding-left:28px;font-family:var(--sans);font-size:12.5px;color:var(--muted);line-height:1.5}
-.step::before{counter-increment:s;content:"0" counter(s);position:absolute;left:0;top:0;
-  color:var(--accent);font-family:var(--mono);font-size:11px;font-weight:600}
-.step b{color:var(--fg);font-weight:600;font-family:var(--mono);font-size:11.5px}
-.step code{font-family:var(--mono);font-size:11px;background:var(--inset);padding:1px 5px;border-radius:2px;color:var(--fg)}
-.foottext{font-family:var(--sans);font-size:11.5px;color:var(--faint);padding:2px 0 36px;line-height:1.65}
-.foottext code{font-family:var(--mono);background:var(--panel);border:1px solid var(--line);padding:1px 6px;border-radius:2px;color:var(--muted)}
-@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+/* how-it-works mini steps (inside demo window) */
+.how-mini{margin-top:18px;padding-top:4px}
+.how-mini .card{padding:16px 16px}
+.how-mini h3{font-size:12px;font-weight:600;color:var(--fg);margin-bottom:14px;letter-spacing:.01em;font-family:var(--font-mono)}
+.how-mini h3::before{content:"// ";color:var(--muted)}
+.mini-steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;counter-reset:s}
+.mstep{position:relative;padding-left:28px;font-size:12.5px;color:var(--muted);line-height:1.5}
+.mstep::before{counter-increment:s;content:"0" counter(s);position:absolute;left:0;top:0;
+  color:var(--accent);font-family:var(--font-mono);font-size:11px;font-weight:700}
+.mstep b{color:var(--fg);font-weight:600;font-family:var(--font-mono);font-size:11.5px}
+.mstep code{font-family:var(--font-mono);font-size:11px;background:var(--inset);padding:1px 5px;border-radius:4px;color:var(--fg)}
+.demo-foot{font-size:11.5px;color:var(--faint);padding:16px 2px 2px;line-height:1.65}
+.demo-foot code{font-family:var(--font-mono);background:var(--inset);border:1px solid var(--line);padding:1px 6px;border-radius:4px;color:var(--muted)}
 
-/* ---- write-up (full project report, appended below the live demo) ---- */
-.wu-head{padding:48px 0 28px;border-top:1px solid var(--line);text-align:center}
-.wu-head .tag{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
-.wu-head .tag::before{content:"// "}
-.wu-head h2{font-family:var(--sans);font-size:26px;font-weight:700;margin:10px 0 10px;letter-spacing:-.02em;color:var(--fg)}
-.wu-head p{font-family:var(--sans);font-size:13.5px;color:var(--muted);max-width:640px;margin:0 auto;line-height:1.65}
-.wu-toc{background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:14px 18px;margin:24px 0 8px}
-.wu-toc .lab{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px}
-.wu-toc ol{columns:2;column-gap:24px;margin:0;padding-left:1.2em;font-family:var(--sans);font-size:12.5px}
-.wu-toc li{margin-bottom:5px}
-.wu-toc a{color:var(--fg);text-decoration:none}
-.wu-toc a:hover{color:var(--accent)}
-@media (max-width:620px){.wu-toc ol{columns:1}}
-.wu-sec{padding:34px 0;border-top:1px solid var(--line)}
-.wu-sec h2{font-family:var(--sans);font-size:18px;font-weight:700;margin:0 0 16px;letter-spacing:-.01em;color:var(--fg)}
-.wu-sec h2 .num{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--accent);margin-right:8px}
-.wu-sec h3{font-family:var(--sans);font-size:13.5px;font-weight:600;margin:22px 0 8px;color:var(--fg)}
-.wu-sec p{font-family:var(--sans);font-size:13px;color:var(--muted);line-height:1.65;margin:0 0 12px}
-.wu-sec p code,.wu-sec li code,.wu-sec h3 code{font-family:var(--mono);font-size:12px;background:var(--inset);border:1px solid var(--line);padding:1px 5px;border-radius:2px;color:var(--fg)}
-.wu-sec pre{background:var(--inset);border:1px solid var(--line);border-radius:3px;padding:12px 14px;overflow-x:auto;font-size:12px;line-height:1.6;margin:0 0 14px}
-.wu-sec pre code{background:none;border:0;padding:0;color:var(--client)}
-.wu-sec ul,.wu-sec ol{font-family:var(--sans);font-size:13px;color:var(--muted);line-height:1.65;margin:0 0 12px;padding-left:1.3em}
-.wu-sec li{margin-bottom:6px}
-.wu-grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:16px 0}
-@media (max-width:760px){.wu-grid2{grid-template-columns:1fr}}
-.wu-card{background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:16px 18px}
-.wu-card h4{font-family:var(--sans);font-size:13px;font-weight:700;margin:0 0 8px;color:var(--fg)}
-.wu-card p{margin:0;font-size:12.5px}
-.wu-diagram{background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:22px 10px;margin:16px 0;overflow-x:auto}
-.wu-diagram svg{display:block;margin:0 auto}
-.wu-callout{border-left:3px solid var(--accent);background:var(--inset);border-radius:0 3px 3px 0;padding:12px 16px;margin:14px 0;font-family:var(--sans);font-size:12.5px;color:var(--fg);line-height:1.6}
-.wu-callout.ok{border-left-color:var(--ok)}
-.wu-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:3px;overflow:hidden;margin:16px 0}
-@media (max-width:620px){.wu-stats{grid-template-columns:repeat(2,1fr)}}
-.wu-stats .s{background:var(--panel);padding:14px;text-align:center}
-.wu-stats .s .v{font-family:var(--mono);font-size:20px;font-weight:600}
-.wu-stats .s.good .v{color:var(--ok)} .wu-stats .s.bad .v{color:var(--crit)}
-.wu-stats .s .c{font-family:var(--sans);font-size:10.5px;color:var(--muted);margin-top:3px}
-table.wu-table{width:100%;border-collapse:collapse;margin:14px 0;font-family:var(--sans);font-size:12px}
-table.wu-table th,table.wu-table td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
-table.wu-table th{color:var(--muted);font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em}
-table.wu-table td.num,table.wu-table th.num{text-align:right;font-variant-numeric:tabular-nums;font-family:var(--mono)}
-.wu-fig{margin:18px 0}
-.wu-fig img{width:100%;height:auto;border-radius:3px;border:1px solid var(--line);background:#fff}
-.wu-fig figcaption{font-family:var(--sans);font-size:11px;color:var(--faint);margin-top:8px;line-height:1.5}
-.wu-bug{border:1px solid var(--line);border-radius:3px;padding:14px 16px;margin-bottom:12px;background:var(--panel)}
-.wu-bug .tag{display:inline-block;font-family:var(--mono);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--crit);margin-bottom:6px}
-.wu-bug h4{font-family:var(--sans);font-size:13px;margin:0 0 6px;color:var(--fg)}
-.wu-bug p{margin:0;font-size:12.5px}
-.wu-footer{padding:30px 0 50px;border-top:1px solid var(--line);font-family:var(--sans);font-size:11.5px;color:var(--faint);text-align:center;line-height:1.8}
-.wu-footer a{color:var(--accent)}
-.wu-top{display:inline-block;margin-top:8px;font-family:var(--mono);font-size:11px;color:var(--faint);text-decoration:none}
+/* ============================================================
+   ARCHITECTURE
+   ============================================================ */
+.arch-diagram{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:30px 14px;margin-bottom:28px;overflow-x:auto}
+.arch-diagram svg{display:block;margin:0 auto;min-width:560px}
+.arch-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px}
+@media (max-width:760px){.arch-grid{grid-template-columns:1fr}}
+.feature-card{padding:24px 26px}
+.feature-card .fi{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;margin-bottom:16px;
+  background:linear-gradient(135deg,rgba(124,108,246,.22),rgba(56,189,248,.14));border:1px solid var(--border)}
+.feature-card .fi svg{width:19px;height:19px;color:var(--brand-2)}
+.feature-card h4{font-size:16px;font-weight:700;margin-bottom:9px}
+.feature-card p{font-size:14px;line-height:1.7;color:var(--text-dim)}
+.feature-card code{font-family:var(--font-mono);font-size:12.5px;background:var(--inset);border:1px solid var(--line);padding:1px 6px;border-radius:5px;color:var(--fg)}
+
+/* ============================================================
+   HOW IT WORKS (detection / mitigation)
+   ============================================================ */
+.how-split{display:grid;grid-template-columns:repeat(2,1fr);gap:28px}
+@media (max-width:860px){.how-split{grid-template-columns:1fr}}
+.how-col{padding:30px 30px 32px}
+.how-col .hc-head{display:flex;align-items:center;gap:12px;margin-bottom:22px}
+.how-col .hc-icon{width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;flex:none}
+.how-col.det .hc-icon{background:linear-gradient(135deg,rgba(34,211,238,.25),rgba(34,211,238,.06));border:1px solid rgba(34,211,238,.3)}
+.how-col.mit .hc-icon{background:linear-gradient(135deg,rgba(240,180,41,.26),rgba(240,180,41,.06));border:1px solid rgba(240,180,41,.3)}
+.how-col .hc-icon svg{width:21px;height:21px}
+.how-col.det .hc-icon svg{color:var(--switch)}
+.how-col.mit .hc-icon svg{color:var(--accent)}
+.how-col h3{font-size:19px;font-weight:700}
+.how-step{display:flex;gap:14px;margin-bottom:20px}
+.how-step .num{flex:none;width:26px;height:26px;border-radius:50%;background:var(--surface);border:1px solid var(--border);
+  display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:11.5px;font-weight:700;color:var(--text-dim)}
+.how-step .body h5{font-size:14.5px;font-weight:600;margin-bottom:6px}
+.how-step .body p{font-size:13.5px;line-height:1.7;color:var(--text-dim)}
+.how-step .body code{font-family:var(--font-mono);font-size:12px;background:var(--inset);border:1px solid var(--line);padding:1px 6px;border-radius:5px;color:var(--fg)}
+.code-block{background:var(--inset);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:14px 0 18px;overflow-x:auto}
+.code-block pre{margin:0;font-family:var(--font-mono);font-size:12.5px;line-height:1.7;color:var(--client)}
+.code-block .c-key{color:var(--brand-2)}
+.code-block .c-str{color:var(--accent)}
+.info-callout{border-left:3px solid var(--brand);background:var(--surface);border-radius:0 10px 10px 0;padding:14px 18px;margin-top:4px;font-size:13.5px;line-height:1.7;color:var(--text)}
+.info-callout.ok{border-left-color:var(--ok)}
+.info-callout b{color:var(--fg)}
+
+/* ============================================================
+   TABLES
+   ============================================================ */
+.table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius);margin:22px 0}
+table.dtable{width:100%;border-collapse:collapse;font-size:13.5px;min-width:520px}
+table.dtable th,table.dtable td{text-align:left;padding:12px 16px;border-bottom:1px solid var(--border)}
+table.dtable thead th{color:var(--text-faint);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;
+  background:var(--surface)}
+table.dtable tbody tr:last-child td{border-bottom:none}
+table.dtable tbody tr:hover{background:var(--surface)}
+table.dtable td.num,table.dtable th.num{text-align:right;font-variant-numeric:tabular-nums;font-family:var(--font-mono)}
+table.dtable code{font-family:var(--font-mono);font-size:12.5px;background:var(--inset);padding:1px 6px;border-radius:5px;color:var(--brand-2)}
+table.dtable tr.hl td{color:var(--ok);font-weight:700}
+
+/* ============================================================
+   RESULTS
+   ============================================================ */
+.result-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:12px}
+@media (max-width:700px){.result-stats{grid-template-columns:repeat(2,1fr)}}
+.rstat{padding:22px 16px;text-align:center}
+.rstat .v{font-family:var(--font-mono);font-size:1.9rem;font-weight:700}
+.rstat.good .v{color:var(--ok)}.rstat.bad .v{color:var(--crit)}
+.rstat .c{font-size:11px;color:var(--text-faint);margin-top:6px}
+
+.fig-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:30px}
+@media (max-width:860px){.fig-grid{grid-template-columns:1fr}}
+.fig-card{overflow:hidden}
+.fig-card img{width:100%;height:auto;background:#fff;display:block}
+.fig-card figcaption{padding:16px 18px;font-size:12.5px;color:var(--text-dim);line-height:1.6}
+.fig-card figcaption b{color:var(--fg)}
+
+/* ============================================================
+   BUGS & LIMITATIONS
+   ============================================================ */
+.bug-grid{display:grid;grid-template-columns:1fr;gap:18px}
+.bug-card{padding:24px 26px}
+.bug-card .btag{display:inline-flex;align-items:center;gap:7px;font-family:var(--font-mono);font-size:10.5px;font-weight:700;
+  text-transform:uppercase;letter-spacing:.06em;color:var(--crit);margin-bottom:10px}
+.bug-card .btag::before{content:"\25cf"}
+.bug-card h4{font-size:16px;font-weight:700;margin-bottom:10px}
+.bug-card p{font-size:14px;line-height:1.75;color:var(--text-dim)}
+.bug-card code{font-family:var(--font-mono);font-size:12.5px;background:var(--inset);border:1px solid var(--line);padding:1px 6px;border-radius:5px;color:var(--fg)}
+
+.limit-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:14px}
+.limit-list li{display:flex;gap:14px;padding:18px 20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);
+  font-size:14px;line-height:1.75;color:var(--text-dim)}
+.limit-list li .li-ico{flex:none;width:22px;height:22px;color:var(--accent);margin-top:2px}
+.limit-list code{font-family:var(--font-mono);font-size:12.5px;background:var(--inset);border:1px solid var(--line);padding:1px 6px;border-radius:5px;color:var(--fg)}
+
+/* ============================================================
+   STACK / REPRODUCE
+   ============================================================ */
+.stack-grid{display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:start}
+@media (max-width:860px){.stack-grid{grid-template-columns:1fr}}
+.repro-steps{list-style:none;margin:0;padding:0;counter-reset:rs}
+.repro-steps li{position:relative;padding:0 0 22px 40px;counter-increment:rs}
+.repro-steps li::before{content:counter(rs);position:absolute;left:0;top:0;width:26px;height:26px;border-radius:50%;
+  background:var(--surface);border:1px solid var(--border-strong);display:flex;align-items:center;justify-content:center;
+  font-family:var(--font-mono);font-size:11.5px;font-weight:700;color:var(--brand-2)}
+.repro-steps li::after{content:"";position:absolute;left:13px;top:28px;bottom:0;width:1px;background:var(--border)}
+.repro-steps li:last-child::after{display:none}
+.repro-steps h5{font-size:14.5px;font-weight:600;margin-bottom:5px}
+.repro-steps p{font-size:13.5px;color:var(--text-dim);line-height:1.7}
+
+/* ============================================================
+   FOOTER
+   ============================================================ */
+.footer{padding:70px 0 50px;border-top:1px solid var(--border);text-align:center}
+.footer .fbrand{display:flex;align-items:center;justify-content:center;gap:10px;font-weight:700;margin-bottom:14px}
+.footer .fbrand svg{width:26px;height:26px}
+.footer p{max-width:520px;margin:0 auto 22px;font-size:13.5px;color:var(--text-dim);line-height:1.7}
+.footer .flinks{display:flex;justify-content:center;gap:22px;flex-wrap:wrap;margin-bottom:30px}
+.footer .flinks a{font-size:13px;font-weight:600;color:var(--text-dim);text-decoration:none}
+.footer .flinks a:hover{color:var(--fg)}
+.footer .fmeta{font-size:11.5px;color:var(--text-faint);font-family:var(--font-mono)}
+
+.top-fab{position:fixed;right:22px;bottom:22px;width:46px;height:46px;border-radius:50%;background:var(--surface);
+  border:1px solid var(--border-strong);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;
+  color:var(--text);text-decoration:none;opacity:0;pointer-events:none;transform:translateY(8px);
+  transition:opacity .3s,transform .3s,background .2s;z-index:90}
+.top-fab.show{opacity:1;pointer-events:auto;transform:translateY(0)}
+.top-fab:hover{background:var(--surface-hover)}
+.top-fab svg{width:18px;height:18px}
 </style>
+</head>
+<body>
 
-<header id="top">
-  <div class="wrap head">
-    <div class="brand">
-      <svg class="logo" viewBox="0 0 40 40" fill="none" aria-hidden="true">
-        <rect x="1" y="1" width="38" height="38" rx="9" fill="var(--accent)" opacity="0.12"/>
-        <path d="M20 6 L31 11.5 V20 C31 27 26 31.5 20 34 C14 31.5 9 27 9 20 V11.5 Z"
-              fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linejoin="round"/>
-        <circle cx="20" cy="18.5" r="3.1" fill="var(--accent)"/>
-        <path d="M20 21.6 V27" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round"/>
-      </svg>
-      <div>
-        <h1>SDN DDoS Shield</h1>
-        <div class="sub">OpenFlow controller · live detection &amp; mitigation</div>
-      </div>
-    </div>
-    <div class="src">
-      <span class="dot"></span>
-      <span>ns-3.40 · OFSwitch13<br>replaying real simulation output</span>
-    </div>
-  </div>
-</header>
-
-<div class="wrap">
-
-  <div class="controls">
-    <button id="play" class="primary" aria-label="Play or pause">▶ Play</button>
-    <button id="restart" aria-label="Restart">↻ Restart</button>
-    <div class="seg" role="group" aria-label="Playback speed">
-      <button data-spd="1" aria-pressed="false">1×</button>
-      <button data-spd="2" aria-pressed="true">2×</button>
-      <button data-spd="4" aria-pressed="false">4×</button>
-    </div>
-    <span class="spc"></span>
-    <button id="mit" class="toggle" aria-pressed="true" aria-label="Toggle controller mitigation">
-      <span class="sw"></span><span class="lab">Controller mitigation</span>
-    </button>
-    <a href="#writeup" style="font-family:var(--mono);font-size:12px;color:var(--muted);text-decoration:none;border:1px solid var(--line);border-radius:3px;padding:8px 13px">Full write-up ↓</a>
-  </div>
-
-  <div class="timeline">
-    <div class="tl-row">
-      <div class="tl-clock"><span id="clock">0.00</span><small> s / 20 s sim</small></div>
-      <div class="track" id="track" role="slider" aria-label="Simulation time" aria-valuemin="0" aria-valuemax="20" aria-valuenow="0" tabindex="0">
-        <div class="rail"><div class="fill" id="fill"></div></div>
-        <div class="mk" style="left:50%;background:var(--warn)"><span style="color:var(--warn)">flood starts 10s</span></div>
-        <div class="mk" id="detmk" style="left:55%;background:var(--crit)"><span style="color:var(--crit)">detect 11.0s</span></div>
-        <div class="head" id="thead" style="left:0%"></div>
-      </div>
-    </div>
-  </div>
-
-  <div class="grid">
-    <!-- LEFT: topology -->
-    <div class="card topo-card">
-      <div class="ch"><h3>Network topology</h3><span class="badge" id="topobadge">data plane</span></div>
-      <div class="body"><canvas id="topo" aria-label="Animated network topology"></canvas></div>
-      <div class="status-strip">
-        <span class="pill ok" id="status"><span class="pdot"></span><span id="statustext">Normal</span></span>
-        <span class="phase-note" id="phase">Legitimate clients streaming UDP to the server through the OpenFlow switch.</span>
-      </div>
-    </div>
-
-    <!-- RIGHT -->
-    <div class="col">
-      <div class="tiles">
-        <div class="tile" id="tile-atk"><div class="k">Attacker rate · port 4</div><div class="v"><span id="m-atk">0</span> <span class="u">pps</span></div></div>
-        <div class="tile"><div class="k">Detection threshold</div><div class="v">1,000 <span class="u">pps</span></div></div>
-        <div class="tile"><div class="k">Legit delivery (est.)</div><div class="v"><span id="m-deliv">100</span><span class="u">%</span></div></div>
-        <div class="tile"><div class="k">Dropped by rule</div><div class="v"><span id="m-drop">0</span></div></div>
-      </div>
-
-      <div class="card">
-        <div class="ch"><h3>Per-port packet rate</h3><span class="badge">OFPMP_PORT_STATS · log scale</span></div>
-        <canvas id="chart" aria-label="Packet rate over time chart"></canvas>
-        <div class="legend">
-          <span><i style="background:var(--client)"></i>legit clients</span>
-          <span><i style="background:var(--attacker)"></i>attacker (port 4)</span>
-          <span><i style="background:var(--warn)"></i>threshold 1000</span>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="ch"><h3>Switch flow table</h3><span class="badge" id="flowbadge">4 rules</span></div>
-        <div class="flows" id="flows"></div>
-      </div>
-
-      <div class="card">
-        <div class="ch"><h3>Controller log</h3><span class="badge">dpctl / detections.csv</span></div>
-        <div class="log" id="log"></div>
-      </div>
-
-      <div class="card">
-        <div class="ch"><h3>Outcome · ns-3 FlowMonitor</h3><span class="badge">whole-run delivery</span></div>
-        <div class="outcome">
-          <div class="ob att" id="ob-att"><div class="obh"><span>Attack, no mitigation</span><span class="r">53.1%</span></div><div class="bar"><i style="width:53.1%"></i></div></div>
-          <div class="ob mit" id="ob-mit"><div class="obh"><span>Attack + controller mitigation</span><span class="r">94.8%</span></div><div class="bar"><i style="width:94.8%"></i></div></div>
-          <div class="foot">Legitimate-client packet delivery to the server, measured across the full 20 s run. Attacker reaching server: <b id="o-att-atk">26.0%</b> → <b id="o-mit-atk">2.9%</b> once the DROP rule is installed.</div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="how">
-    <div class="card">
-      <h2>How the controller stops the flood</h2>
-      <div class="steps">
-        <div class="step"><b>Learn &amp; forward.</b> Packet-in messages teach the controller which MAC sits on which port; it installs <code>prio 100</code> forwarding flows.</div>
-        <div class="step"><b>Poll port stats.</b> Every 1 s the controller reads OpenFlow per-port counters — one port per host, so a port rate is a per-source rate.</div>
-        <div class="step"><b>Detect.</b> Any port above <code>1000 pps</code> is flagged. Port 4 hits <code>39,062 pps</code> and trips at t = 11.0 s.</div>
-        <div class="step"><b>Mitigate.</b> A <code>prio 200 in_port=4 → DROP</code> flow-mod blocks the attacker at the switch; legit traffic reaches the server again.</div>
-      </div>
-    </div>
-  </div>
-
-  <p class="foottext">
-    Every rate, timestamp and delivery figure above is replayed from real output of the ns-3 / OFSwitch13 project
-    (<code>monitor-stats.csv</code>, <code>detections.csv</code>, <code>flowmon.xml</code>). Regenerate it with
-    <code>./ns3 run ddos-mitigated</code> and <code>./ns3 run ddos-attack</code>. The moving packets are a visualization of the measured flows, not a packet-by-packet trace.
-  </p>
+<div class="bg-fx" aria-hidden="true">
+  <div class="blob b1"></div>
+  <div class="blob b2"></div>
+  <div class="blob b3"></div>
+  <div class="grid-overlay"></div>
+  <div class="noise"></div>
 </div>
 
-<div class="wrap" id="writeup">
-  <div class="wu-head">
-    <div class="tag">Full write-up</div>
-    <h2>The complete project report</h2>
-    <p>
-      The demo above replays the headline numbers live. Below is the full
-      report: architecture rationale, the complete six-group / eleven-run
-      experiment matrix, every result (not just the two shown above), two
-      real bugs found while building this, and the honest limitations.
+<nav class="topnav" id="topnav">
+  <div class="nav-inner">
+    <a class="brand" href="#overview">
+      <svg class="logo" viewBox="0 0 40 40" fill="none" aria-hidden="true">
+        <rect x="1" y="1" width="38" height="38" rx="10" fill="url(#navgrad)" opacity="0.18"/>
+        <path d="M20 6 L31 11.5 V20 C31 27 26 31.5 20 34 C14 31.5 9 27 9 20 V11.5 Z" fill="none" stroke="url(#navgrad)" stroke-width="2.2" stroke-linejoin="round"/>
+        <circle cx="20" cy="18.5" r="3.1" fill="url(#navgrad)"/>
+        <path d="M20 21.6 V27" stroke="url(#navgrad)" stroke-width="2.2" stroke-linecap="round"/>
+        <defs><linearGradient id="navgrad" x1="0" y1="0" x2="40" y2="40"><stop stop-color="#7c6cf6"/><stop offset="1" stop-color="#38bdf8"/></linearGradient></defs>
+      </svg>
+      <span>SDN DDoS Shield<span class="sub">ns-3.40 &middot; OFSwitch13</span></span>
+    </a>
+    <ul class="nav-links" id="navLinks">
+      <li><a href="#overview" data-nav>Overview</a></li>
+      <li><a href="#demo" data-nav>Live Demo</a></li>
+      <li><a href="#architecture" data-nav>Architecture</a></li>
+      <li><a href="#how" data-nav>How It Works</a></li>
+      <li><a href="#results" data-nav>Results</a></li>
+      <li><a href="#bugs" data-nav>Bugs &amp; Limits</a></li>
+      <li><a href="#stack" data-nav>Reproduce</a></li>
+    </ul>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <a class="nav-cta" href="https://github.com/TheAaryanPrakash/SDN-DDOS-UsingNS3">
+      <svg viewBox="0 0 24 24" fill="currentColor" width="15" height="15"><path d="M12 .5C5.73.5.98 5.24.98 11.52c0 5.02 3.26 9.28 7.78 10.78.57.1.78-.25.78-.55 0-.27-.01-1-.015-1.96-3.16.69-3.83-1.52-3.83-1.52-.52-1.31-1.26-1.66-1.26-1.66-1.03-.7.08-.69.08-.69 1.14.08 1.74 1.17 1.74 1.17 1.01 1.73 2.65 1.23 3.3.94.1-.73.4-1.23.72-1.51-2.52-.29-5.17-1.26-5.17-5.6 0-1.24.44-2.25 1.17-3.04-.12-.29-.51-1.45.11-3.02 0 0 .96-.31 3.13 1.16a10.8 10.8 0 0 1 5.7 0c2.17-1.47 3.13-1.16 3.13-1.16.62 1.57.23 2.73.11 3.02.73.79 1.17 1.8 1.17 3.04 0 4.35-2.65 5.31-5.18 5.59.41.35.77 1.04.77 2.11 0 1.52-.014 2.75-.014 3.12 0 .3.2.66.79.55 4.52-1.51 7.77-5.76 7.77-10.78C23.02 5.24 18.27.5 12 .5z"/></svg>
+      Source
+    </a>
+  </div>
+  <div class="nav-progress" id="navProgress"></div>
+</nav>
+
+<!-- ================= HERO ================= -->
+<header class="hero" id="overview">
+  <canvas id="heroCanvas" aria-hidden="true"></canvas>
+  <div class="container hero-inner">
+    <div class="eyebrow-row reveal" style="--d:0">
+      <span class="tag"><span class="dot"></span>All 13 phases complete</span>
+      <span class="tag">Final-year Network Programming project</span>
+      <span class="tag">Real OpenFlow 1.3 &middot; NS-3 &middot; OFSwitch13</span>
+    </div>
+    <h1 class="reveal" style="--d:1">A real SDN that <span class="grad">watches, detects &amp;</span><br>blocks a DDoS attack</h1>
+    <p class="hero-sub reveal" style="--d:2">
+      Legitimate client traffic, a UDP flood, threshold-based detection at the
+      SDN controller, and a real OpenFlow DROP flow-mod — simulated end to end
+      in NS-3, measured across 11 experiment runs, and replayed live below from
+      the actual output. No ML. No mock data.
     </p>
-    <div class="wu-toc">
-      <div class="lab">Contents</div>
-      <ol>
-        <li><a href="#wu-design">Architecture &amp; design</a></li>
-        <li><a href="#wu-methodology">Experiments &amp; methodology</a></li>
-        <li><a href="#wu-results">Full results</a></li>
-        <li><a href="#wu-bugs">Bugs found along the way</a></li>
-        <li><a href="#wu-limitations">Known limitations</a></li>
-        <li><a href="#wu-stack">Tech stack &amp; reproducing it</a></li>
-      </ol>
+    <div class="hero-cta reveal" style="--d:3">
+      <a href="#demo" class="btn btn-primary">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        Watch the live demo
+      </a>
+      <a href="#results" class="btn">See the full results</a>
+      <a href="https://github.com/TheAaryanPrakash/SDN-DDOS-UsingNS3" class="btn">View source</a>
+    </div>
+
+    <div class="stat-grid reveal-scale" id="heroStats" style="--d:4">
+      <div class="stat-card c-bad"><div class="v" data-count="46.9" data-suffix="%" data-dec="1">0.0%</div><div class="l">Legit loss, unmitigated</div></div>
+      <div class="stat-card c-good"><div class="v" data-count="5.2" data-suffix="%" data-dec="1">0.0%</div><div class="l">Legit loss, mitigated</div></div>
+      <div class="stat-card c-brand"><div class="v" data-count="1.0" data-suffix="s" data-dec="1" data-prefix="~">~0.0s</div><div class="l">Detection latency</div></div>
+      <div class="stat-card"><div class="v" data-count="11" data-suffix="" data-dec="0">0</div><div class="l">Experiment runs</div></div>
+    </div>
+
+    <div class="pipe-wrap reveal" style="--d:5">
+      <div class="pipeline">
+        <div class="pstep"><div class="dot">01</div><div class="lbl">Baseline traffic</div></div>
+        <div class="pstep"><div class="dot">02</div><div class="lbl">Attack begins</div></div>
+        <div class="pstep"><div class="dot">03</div><div class="lbl">Controller monitors</div></div>
+        <div class="pstep"><div class="dot">04</div><div class="lbl">Threshold detect</div></div>
+        <div class="pstep"><div class="dot">05</div><div class="lbl">Source identified</div></div>
+        <div class="pstep"><div class="dot">06</div><div class="lbl">DROP flow-mod</div></div>
+        <div class="pstep"><div class="dot">07</div><div class="lbl">Traffic blocked</div></div>
+        <div class="pstep"><div class="dot">08</div><div class="lbl">Legit recovers</div></div>
+      </div>
     </div>
   </div>
+  <a href="#demo" class="scroll-cue"><span class="wheel"></span>Scroll</a>
+</header>
 
-  <section class="wu-sec" id="wu-design">
-    <h2><span class="num">01</span>Architecture &amp; design</h2>
+<main>
+<!-- ================= LIVE DEMO ================= -->
+<section class="section" id="demo">
+  <div class="container">
+    <div class="section-head center reveal">
+      <div class="eyebrow">Live demo</div>
+      <h2>Watch the attack happen — with real data</h2>
+      <p>Every rate, timestamp and delivery figure below is replayed from the actual ns-3 / OFSwitch13 output of this project (<code style="font-family:var(--font-mono);background:var(--inset);padding:1px 6px;border-radius:5px;border:1px solid var(--line)">monitor-stats.csv</code>, <code style="font-family:var(--font-mono);background:var(--inset);padding:1px 6px;border-radius:5px;border:1px solid var(--line)">detections.csv</code>, <code style="font-family:var(--font-mono);background:var(--inset);padding:1px 6px;border-radius:5px;border:1px solid var(--line)">flowmon.xml</code>) — not a hand-animated mock.</p>
+    </div>
 
-    <div class="wu-diagram">
+    <div class="window reveal-scale">
+      <div class="window-bar">
+        <span class="wdot r"></span><span class="wdot y"></span><span class="wdot g"></span>
+        <span class="window-title">live-replay.sdn &mdash; ns-3.40 &middot; OFSwitch13</span>
+        <span class="window-live"><span class="live-dot"></span>Live replay</span>
+      </div>
+      <div class="window-body">
+
+        <div class="controls">
+          <button id="play" class="dbtn primary" aria-label="Play or pause">&#9654; Play</button>
+          <button id="restart" class="dbtn" aria-label="Restart">&#8635; Restart</button>
+          <div class="seg" role="group" aria-label="Playback speed">
+            <button data-spd="1" aria-pressed="false">1&times;</button>
+            <button data-spd="2" aria-pressed="true">2&times;</button>
+            <button data-spd="4" aria-pressed="false">4&times;</button>
+          </div>
+          <span class="spc"></span>
+          <button id="mit" class="toggle" aria-pressed="true" aria-label="Toggle controller mitigation">
+            <span class="sw"></span><span class="lab">Controller mitigation</span>
+          </button>
+        </div>
+
+        <div class="timeline">
+          <div class="tl-row">
+            <div class="tl-clock"><span id="clock">0.00</span><small> s / 20 s sim</small></div>
+            <div class="track" id="track" role="slider" aria-label="Simulation time" aria-valuemin="0" aria-valuemax="20" aria-valuenow="0" tabindex="0">
+              <div class="rail"><div class="fill" id="fill"></div></div>
+              <div class="mk" style="left:50%;background:var(--warn)"><span style="color:var(--warn)">flood starts 10s</span></div>
+              <div class="mk" id="detmk" style="left:55%;background:var(--crit)"><span style="color:var(--crit)">detect 11.0s</span></div>
+              <div class="head" id="thead" style="left:0%"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid">
+          <div class="card topo-card">
+            <div class="ch"><h3>Network topology</h3><span class="badge" id="topobadge">data plane</span></div>
+            <div class="body"><canvas id="topo" aria-label="Animated network topology"></canvas></div>
+            <div class="status-strip">
+              <span class="pill ok" id="status"><span class="pdot"></span><span id="statustext">Normal</span></span>
+              <span class="phase-note" id="phase">Legitimate clients streaming UDP to the server through the OpenFlow switch.</span>
+            </div>
+          </div>
+
+          <div class="col">
+            <div class="tiles">
+              <div class="tile" id="tile-atk"><div class="k">Attacker rate &middot; port 4</div><div class="v"><span id="m-atk">0</span> <span class="u">pps</span></div></div>
+              <div class="tile"><div class="k">Detection threshold</div><div class="v">1,000 <span class="u">pps</span></div></div>
+              <div class="tile"><div class="k">Legit delivery (est.)</div><div class="v"><span id="m-deliv">100</span><span class="u">%</span></div></div>
+              <div class="tile"><div class="k">Dropped by rule</div><div class="v"><span id="m-drop">0</span></div></div>
+            </div>
+
+            <div class="card">
+              <div class="ch"><h3>Per-port packet rate</h3><span class="badge">OFPMP_PORT_STATS &middot; log scale</span></div>
+              <canvas id="chart" aria-label="Packet rate over time chart"></canvas>
+              <div class="legend">
+                <span><i style="background:var(--client)"></i>legit clients</span>
+                <span><i style="background:var(--attacker)"></i>attacker (port 4)</span>
+                <span><i style="background:var(--warn)"></i>threshold 1000</span>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="ch"><h3>Switch flow table</h3><span class="badge" id="flowbadge">4 rules</span></div>
+              <div class="flows" id="flows"></div>
+            </div>
+
+            <div class="card">
+              <div class="ch"><h3>Controller log</h3><span class="badge">dpctl / detections.csv</span></div>
+              <div class="log" id="log"></div>
+            </div>
+
+            <div class="card">
+              <div class="ch"><h3>Outcome &middot; ns-3 FlowMonitor</h3><span class="badge">whole-run delivery</span></div>
+              <div class="outcome">
+                <div class="ob att" id="ob-att"><div class="obh"><span>Attack, no mitigation</span><span class="r">53.1%</span></div><div class="obar"><i style="width:53.1%"></i></div></div>
+                <div class="ob mit" id="ob-mit"><div class="obh"><span>Attack + controller mitigation</span><span class="r">94.8%</span></div><div class="obar"><i style="width:94.8%"></i></div></div>
+                <div class="foot">Legitimate-client packet delivery to the server, measured across the full 20s run. Attacker reaching server: <b id="o-att-atk">26.0%</b> &rarr; <b id="o-mit-atk">2.9%</b> once the DROP rule is installed.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="how-mini">
+          <div class="card">
+            <h3>How the controller stops the flood</h3>
+            <div class="mini-steps">
+              <div class="mstep"><b>Learn &amp; forward.</b> Packet-in messages teach the controller which MAC sits on which port; it installs <code>prio 100</code> forwarding flows.</div>
+              <div class="mstep"><b>Poll port stats.</b> Every 1s the controller reads OpenFlow per-port counters — one port per host, so a port rate is a per-source rate.</div>
+              <div class="mstep"><b>Detect.</b> Any port above <code>1000 pps</code> is flagged. Port 4 hits <code>39,062 pps</code> and trips at t = 11.0s.</div>
+              <div class="mstep"><b>Mitigate.</b> A <code>prio 200 in_port=4 &rarr; DROP</code> flow-mod blocks the attacker at the switch; legit traffic reaches the server again.</div>
+            </div>
+          </div>
+        </div>
+
+        <p class="demo-foot">
+          Regenerate this dataset from fresh runs with <code>python3 scripts/analysis/build_dashboard.py</code>, after
+          <code>./ns3 run ddos-mitigated</code> and <code>./ns3 run ddos-attack</code>. The moving packets are a visualization of the measured flows, not a packet-by-packet trace.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= ARCHITECTURE ================= -->
+<section class="section" id="architecture">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="eyebrow">01 &middot; System design</div>
+      <h2>Architecture &amp; design</h2>
+      <p>One controller class drives the whole pipeline — real OpenFlow 1.3 on a topology built so that a port number is, by construction, a source identity.</p>
+    </div>
+
+    <div class="arch-diagram reveal-scale">
       <svg viewBox="0 0 760 300" width="100%" role="img" aria-label="Network topology diagram">
         <defs>
-          <marker id="wu-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
             <path d="M0,0 L6,3 L0,6 Z" fill="currentColor"/>
           </marker>
+          <linearGradient id="archgrad" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#7c6cf6"/><stop offset="1" stop-color="#38bdf8"/></linearGradient>
         </defs>
-        <g fill="none" stroke="currentColor" stroke-width="1.4" color="var(--faint)">
-          <line x1="380" y1="78"  x2="380" y2="122" marker-end="url(#wu-arrow)" marker-start="url(#wu-arrow)"/>
-          <line x1="380" y1="150" x2="150" y2="198" marker-end="url(#wu-arrow)" marker-start="url(#wu-arrow)"/>
-          <line x1="380" y1="150" x2="300" y2="198" marker-end="url(#wu-arrow)" marker-start="url(#wu-arrow)"/>
-          <line x1="380" y1="150" x2="460" y2="198" marker-end="url(#wu-arrow)" marker-start="url(#wu-arrow)"/>
-          <line x1="380" y1="150" x2="620" y2="198" marker-end="url(#wu-arrow)" marker-start="url(#wu-arrow)"/>
-          <line x1="380" y1="150" x2="380" y2="250" marker-end="url(#wu-arrow)"/>
+        <g fill="none" stroke="currentColor" stroke-width="1.4" color="#4b5468">
+          <line x1="380" y1="78"  x2="380" y2="122" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+          <line x1="380" y1="150" x2="150" y2="198" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+          <line x1="380" y1="150" x2="300" y2="198" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+          <line x1="380" y1="150" x2="460" y2="198" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+          <line x1="380" y1="150" x2="620" y2="198" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+          <line x1="380" y1="150" x2="380" y2="250" marker-end="url(#arrow)"/>
         </g>
-        <g font-family="'IBM Plex Sans',sans-serif">
-          <rect x="290" y="20" width="180" height="56" rx="6" fill="var(--inset)" stroke="var(--accent)" stroke-width="1.5"/>
-          <text x="380" y="44" text-anchor="middle" font-size="13" font-weight="700" fill="var(--fg)">SdnController</text>
-          <text x="380" y="62" text-anchor="middle" font-size="10.5" fill="var(--muted)">OpenFlow 1.3 · C++</text>
+        <g font-family="Inter,sans-serif">
+          <rect x="290" y="20" width="180" height="56" rx="12" fill="rgba(124,108,246,.12)" stroke="url(#archgrad)" stroke-width="1.6"/>
+          <text x="380" y="44" text-anchor="middle" font-size="13" font-weight="700" fill="#f3f4f9">SdnController</text>
+          <text x="380" y="62" text-anchor="middle" font-size="10.5" fill="#8e96ab">OpenFlow 1.3 &middot; C++</text>
 
-          <rect x="300" y="122" width="160" height="50" rx="6" fill="var(--panel)" stroke="var(--switch)" stroke-width="1.5"/>
-          <text x="380" y="144" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--fg)">OFSwitch13 / BOFUSS</text>
-          <text x="380" y="160" text-anchor="middle" font-size="10" fill="var(--muted)">one dedicated port per host</text>
+          <rect x="300" y="122" width="160" height="50" rx="12" fill="#10121a" stroke="#22d3ee" stroke-width="1.4"/>
+          <text x="380" y="144" text-anchor="middle" font-size="12.5" font-weight="700" fill="#f3f4f9">OFSwitch13 / BOFUSS</text>
+          <text x="380" y="160" text-anchor="middle" font-size="10" fill="#8e96ab">one dedicated port per host</text>
 
-          <rect x="90"  y="198" width="120" height="44" rx="5" fill="var(--panel)" stroke="var(--client)" stroke-width="1.5"/>
-          <text x="150" y="225" text-anchor="middle" font-size="12" fill="var(--fg)">Client 1..N</text>
+          <rect x="90"  y="198" width="120" height="44" rx="10" fill="#10121a" stroke="#34d399" stroke-width="1.4"/>
+          <text x="150" y="225" text-anchor="middle" font-size="12" fill="#f3f4f9">Client 1..N</text>
 
-          <rect x="240" y="198" width="120" height="44" rx="5" fill="var(--panel)" stroke="var(--client)" stroke-width="1.5"/>
-          <text x="300" y="225" text-anchor="middle" font-size="12" fill="var(--fg)">Client 1..N</text>
+          <rect x="240" y="198" width="120" height="44" rx="10" fill="#10121a" stroke="#34d399" stroke-width="1.4"/>
+          <text x="300" y="225" text-anchor="middle" font-size="12" fill="#f3f4f9">Client 1..N</text>
 
-          <rect x="400" y="198" width="120" height="44" rx="5" fill="var(--panel)" stroke="var(--attacker)" stroke-width="1.5"/>
-          <text x="460" y="225" text-anchor="middle" font-size="12" fill="var(--fg)">Attacker(s)</text>
+          <rect x="400" y="198" width="120" height="44" rx="10" fill="#10121a" stroke="#fb7185" stroke-width="1.4"/>
+          <text x="460" y="225" text-anchor="middle" font-size="12" fill="#f3f4f9">Attacker(s)</text>
 
-          <rect x="560" y="198" width="120" height="44" rx="5" fill="var(--panel)" stroke="var(--attacker)" stroke-width="1.5"/>
-          <text x="620" y="225" text-anchor="middle" font-size="12" fill="var(--fg)">Attacker(s)</text>
+          <rect x="560" y="198" width="120" height="44" rx="10" fill="#10121a" stroke="#fb7185" stroke-width="1.4"/>
+          <text x="620" y="225" text-anchor="middle" font-size="12" fill="#f3f4f9">Attacker(s)</text>
 
-          <rect x="310" y="252" width="140" height="44" rx="5" fill="var(--inset)" stroke="var(--server)" stroke-width="1.5"/>
-          <text x="380" y="279" text-anchor="middle" font-size="12" font-weight="700" fill="var(--fg)">Server (victim)</text>
+          <rect x="310" y="252" width="140" height="44" rx="10" fill="rgba(124,108,246,.12)" stroke="url(#archgrad)" stroke-width="1.6"/>
+          <text x="380" y="279" text-anchor="middle" font-size="12" font-weight="700" fill="#f3f4f9">Server (victim)</text>
         </g>
       </svg>
     </div>
 
-    <div class="wu-grid2">
-      <div class="card wu-card">
+    <div class="arch-grid">
+      <div class="glass-card feature-card reveal" style="--d:0">
+        <div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h16" stroke-linecap="round"/></svg></div>
         <h4>Point-to-point, not shared, links</h4>
-        <p>Every host — client, attacker, or server — has its own dedicated CSMA link into the switch. There is no shared Ethernet segment, which means a <strong>per-port rate is, in this topology, a per-source rate</strong> — the property that makes plain port-statistics polling sufficient for detection.</p>
+        <p>Every host &mdash; client, attacker, or server &mdash; has its own dedicated CSMA link into the switch. There is no shared Ethernet segment, which means a <strong>per-port rate is, in this topology, a per-source rate</strong> &mdash; the property that makes plain port-statistics polling sufficient for detection.</p>
       </div>
-      <div class="card wu-card">
+      <div class="glass-card feature-card reveal" style="--d:1">
+        <div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12h4l3 8 4-16 3 8h4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
         <h4>A deliberately slow victim link</h4>
         <p>The server's own access link is the slowest in the topology (10&nbsp;Mbps default vs. 100&nbsp;Mbps for everyone else), modeling the actual resource a volumetric flood exhausts: the victim's own bandwidth, not the core network.</p>
       </div>
-      <div class="card wu-card">
+      <div class="glass-card feature-card reveal" style="--d:2">
+        <div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 9h6v6H9z" stroke-linejoin="round"/></svg></div>
         <h4>One controller class, two experiments</h4>
         <p><code>SdnController</code> implements L2 learning-switch forwarding, OpenFlow monitoring, threshold detection, <em>and</em> DROP-rule mitigation in one place. An <code>EnableMitigation</code> attribute toggles mitigation off per run, so the exact same class drives both the "attack, no mitigation" and "attack, mitigated" experiments.</p>
       </div>
-      <div class="card wu-card">
+      <div class="glass-card feature-card reveal" style="--d:3">
+        <div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l8 4v5c0 5-3.5 7.5-8 9-4.5-1.5-8-4-8-9V7z" stroke-linejoin="round"/></svg></div>
         <h4>Real OpenFlow, not a simulation of a simulation</h4>
-        <p>The switch is a real <code>OFSwitch13Device</code> backed by the BOFUSS OpenFlow 1.3 datapath library — actual <code>OFPMP_PORT_STATS</code> multipart messages and actual flow-mod drop rules, not a scripted stand-in for them.</p>
+        <p>The switch is a real <code>OFSwitch13Device</code> backed by the BOFUSS OpenFlow 1.3 datapath library &mdash; actual <code>OFPMP_PORT_STATS</code> multipart messages and actual flow-mod drop rules, not a scripted stand-in for them.</p>
       </div>
     </div>
-  </section>
+  </div>
+</section>
 
-  <section class="wu-sec" id="wu-methodology">
-    <h2><span class="num">02</span>Experiments &amp; methodology</h2>
-    <p>
-      Six experiment groups, eleven total runs, each writing
-      <code>flowmon.xml</code> (real per-flow throughput/delay/loss via ns-3
-      FlowMonitor), <code>monitor-stats.csv</code>, <code>detections.csv</code>, switch
-      datapath logs, and (where enabled) per-port pcaps. Nothing in the
-      results below is hand-entered or estimated — all of it is generated
-      directly from these files by <code>scripts/analysis/generate_graphs.py</code>,
-      and the live demo above reads the same files via <code>scripts/analysis/build_dashboard.py</code>.
-    </p>
-    <table class="wu-table">
-      <thead><tr><th>#</th><th>Group</th><th>What it varies</th></tr></thead>
-      <tbody>
-        <tr><td>1</td><td><code>exp1-normal</code></td><td>Normal traffic only — the baseline.</td></tr>
-        <tr><td>2</td><td><code>exp2-attack-no-mitigation</code></td><td>Attack; detection logs transitions but never blocks.</td></tr>
-        <tr><td>3</td><td><code>exp3-attack-mitigated</code></td><td>Attack with full detection + mitigation active.</td></tr>
-        <tr><td>4</td><td><code>exp4-intensity-{low,medium,high}</code></td><td>Attack rate: 5 / 20 / 50&nbsp;Mbps, mitigated.</td></tr>
-        <tr><td>5</td><td><code>exp5-threshold-{200,1000,5000}</code></td><td>Detection threshold (pkt/s), fixed 20&nbsp;Mbps attack, mitigated.</td></tr>
-        <tr><td>6</td><td><code>exp6-attackers-{1,3}</code></td><td>1 vs. 3 simultaneous attackers, mitigated.</td></tr>
-      </tbody>
-    </table>
-    <h3>Key tunable parameters</h3>
-    <table class="wu-table">
-      <thead><tr><th>Flag</th><th>Default</th><th>Meaning</th></tr></thead>
-      <tbody>
-        <tr><td><code>--numClients</code></td><td>3</td><td>Legitimate client count</td></tr>
-        <tr><td><code>--perClientRate</code></td><td>500Kbps</td><td>Each client's UDP send rate</td></tr>
-        <tr><td><code>--numAttackers</code></td><td>1</td><td>Attacker count</td></tr>
-        <tr><td><code>--attackRate</code></td><td>20Mbps</td><td>Each attacker's flood rate</td></tr>
-        <tr><td><code>--threshold</code></td><td>1000</td><td>Detection threshold, packets/sec</td></tr>
-        <tr><td><code>--monitorInterval</code></td><td>1.0</td><td>Controller polling interval, seconds</td></tr>
-        <tr><td><code>--simTime</code></td><td>20</td><td>Total simulation duration, seconds</td></tr>
-      </tbody>
-    </table>
-  </section>
-
-  <section class="wu-sec" id="wu-results">
-    <h2><span class="num">03</span>Full results</h2>
-
-    <div class="wu-stats">
-      <div class="s good"><div class="v">0.0%</div><div class="c">Loss, normal traffic</div></div>
-      <div class="s bad"><div class="v">46.9%</div><div class="c">Loss, attack unmitigated</div></div>
-      <div class="s good"><div class="v">5.2%</div><div class="c">Loss, attack mitigated</div></div>
-      <div class="s"><div class="v">~1.0s</div><div class="c">Detection latency</div></div>
+<!-- ================= HOW IT WORKS ================= -->
+<section class="section" id="how">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="eyebrow">02 &middot; Mechanism</div>
+      <h2>How detection &amp; mitigation work</h2>
+      <p>No machine learning, no statistics beyond a single comparison — a hard project requirement, not a simplification chosen for convenience.</p>
     </div>
 
-    <table class="wu-table">
-      <thead>
-        <tr><th>Experiment</th><th class="num">Legit loss</th><th class="num">Legit throughput</th><th class="num">Avg delay</th><th class="num">Detection delay</th></tr>
-      </thead>
-      <tbody>
-        <tr><td>Normal traffic</td><td class="num">0.0%</td><td class="num">1.416 Mbps</td><td class="num">0.147 ms</td><td class="num">—</td></tr>
-        <tr><td>Attack, no mitigation</td><td class="num">46.9%</td><td class="num">0.752 Mbps</td><td class="num">1.19 ms</td><td class="num">1.003 s</td></tr>
-        <tr><td>Attack, mitigated</td><td class="num">5.2%</td><td class="num">1.342 Mbps</td><td class="num">0.604 ms</td><td class="num">1.003 s</td></tr>
-        <tr><td>Intensity: low (5 Mbps)</td><td class="num">1.19%</td><td class="num">1.399 Mbps</td><td class="num">1.012 ms</td><td class="num">1.003 s</td></tr>
-        <tr><td>Intensity: medium (20 Mbps)</td><td class="num">5.2%</td><td class="num">1.342 Mbps</td><td class="num">0.604 ms</td><td class="num">1.003 s</td></tr>
-        <tr><td>Intensity: high (50 Mbps)</td><td class="num">5.19%</td><td class="num">1.342 Mbps</td><td class="num">0.605 ms</td><td class="num">1.003 s</td></tr>
-        <tr><td>Threshold: 200 pkt/s</td><td class="num">5.2%</td><td class="num">1.342 Mbps</td><td class="num">0.604 ms</td><td class="num">1.003 s</td></tr>
-        <tr><td>Threshold: 1000 pkt/s</td><td class="num">5.2%</td><td class="num">1.342 Mbps</td><td class="num">0.604 ms</td><td class="num">1.003 s</td></tr>
-        <tr><td>Threshold: 5000 pkt/s</td><td class="num">5.2%</td><td class="num">1.342 Mbps</td><td class="num">0.604 ms</td><td class="num">1.003 s</td></tr>
-        <tr><td>1 attacker, mitigated</td><td class="num">5.2%</td><td class="num">1.342 Mbps</td><td class="num">0.604 ms</td><td class="num">1.003 s</td></tr>
-        <tr><td>3 attackers, mitigated</td><td class="num">9.5%</td><td class="num">1.281 Mbps</td><td class="num">0.761 ms</td><td class="num">1.006 s</td></tr>
-      </tbody>
-    </table>
+    <div class="how-split">
+      <div class="glass-card how-col det reveal" style="--d:0">
+        <div class="hc-head">
+          <div class="hc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3" stroke-linecap="round"/></svg></div>
+          <h3>Detection</h3>
+        </div>
+        <div class="how-step">
+          <div class="num">1</div>
+          <div class="body">
+            <h5>Monitoring</h5>
+            <p>Every <code>MonitorInterval</code> seconds (default 1s), <code>RequestPortStats</code> sends a real OpenFlow <strong>port-statistics request</strong> (<code>OFPMP_PORT_STATS</code>) to the switch. <code>ProcessPortStatsReply</code> computes <code>(current &minus; previous) / interval</code> for packets/sec per port, logging every sample to <code>monitor-stats.csv</code>.</p>
+          </div>
+        </div>
+        <div class="how-step">
+          <div class="num">2</div>
+          <div class="body">
+            <h5>Source identification</h5>
+            <p>Because every host sits on its own dedicated switch port, a port number <em>is</em> a source identity here. The controller also keeps a MAC-learning table (shared with L2 forwarding) to log a human-readable MAC alongside the port.</p>
+          </div>
+        </div>
+        <div class="how-step">
+          <div class="num">3</div>
+          <div class="body">
+            <h5>Threshold comparison</h5>
+            <p><code>CheckThreshold</code> runs the entire detection rule, every time a rate is computed:</p>
+          </div>
+        </div>
+        <div class="code-block"><pre><span class="c-key">bool</span> isSuspicious = packetsPerSec &gt; m_pktRateThreshold;</pre></div>
+        <div class="info-callout">Packet-in counts are deliberately <b>not</b> used: once a flow is learned and cached, matching packets stop reaching the controller — the entire point of a flow table. An ongoing flood becomes invisible to packet-in counting after its first packet. Port statistics, kept by the switch datapath itself, see it regardless.</div>
+      </div>
 
-    <figure class="wu-fig">
-      <img src="graphs/01_before_after_mitigation.png" alt="Bar charts comparing packet loss and throughput for normal traffic, attack without mitigation, and attack with mitigation">
-      <figcaption>Fig. 1 — The headline result: mitigation cuts legitimate packet loss from 46.9% to 5.2% and restores throughput from 0.75 Mbps back to 1.34 Mbps, against the identical attack.</figcaption>
-    </figure>
+      <div class="glass-card how-col mit reveal" style="--d:1">
+        <div class="hc-head">
+          <div class="hc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l8 4v5c0 5-3.5 7.5-8 9-4.5-1.5-8-4-8-9V7z" stroke-linejoin="round"/><path d="M9.5 12l1.8 1.8L15 10" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <h3>Mitigation</h3>
+        </div>
+        <div class="how-step">
+          <div class="num">1</div>
+          <div class="body">
+            <h5>Install the DROP rule</h5>
+            <p>When a port transitions to suspicious, <code>InstallMitigation</code> sends a real OpenFlow flow-mod:</p>
+          </div>
+        </div>
+        <div class="code-block"><pre>flow-mod cmd=add,table=0,prio=200 in_port=&lt;port&gt;</pre></div>
+        <div class="how-step">
+          <div class="num">2</div>
+          <div class="body">
+            <h5>Why it blocks</h5>
+            <p>No action/instruction clause at all &mdash; OpenFlow 1.3 defines an empty instruction set as a silent <strong>drop</strong>. Priority 200 sits above the learned forwarding flows (100) and the table-miss entry (0), so this rule matches first, before the bottleneck link to the server.</p>
+          </div>
+        </div>
+        <div class="how-step">
+          <div class="num">3</div>
+          <div class="body">
+            <h5>Recovery</h5>
+            <p>If the rate later drops under the threshold, <code>RemoveMitigation</code> deletes the rule, restoring normal forwarding:</p>
+          </div>
+        </div>
+        <div class="code-block"><pre>flow-mod cmd=del,table=0 in_port=&lt;port&gt;</pre></div>
+        <div class="info-callout ok"><b>Verified result</b> (Experiment 2 vs. 3): legitimate client packet loss goes from <b>46.9%</b> (unmitigated) to <b>5.2%</b> (mitigated) against the identical attack. The server's own received-packet rate, checked directly from its pcap, returns to the exact pre-attack baseline (~366&nbsp;pkt/s) within one polling interval of mitigation kicking in.</div>
+      </div>
+    </div>
+  </div>
+</section>
 
-    <figure class="wu-fig">
-      <img src="graphs/02_attack_intensity_sweep.png" alt="Line charts of legitimate throughput, packet loss, and delay against attack rate of 5, 20, and 50 Mbps, with mitigation active">
-      <figcaption>Fig. 2 — Experiment 4: once the attack is strong enough to cross the detection threshold, mitigation caps legitimate-side damage regardless of how much further the attack rate climbs (5→20→50 Mbps) — loss and delay flatten out rather than keep degrading.</figcaption>
-    </figure>
-
-    <figure class="wu-fig">
-      <img src="graphs/03_detection_threshold_sweep.png" alt="Bar charts of detection latency and legitimate loss across detection thresholds of 200, 1000, and 5000 packets per second">
-      <figcaption>Fig. 3 — Experiment 5: flat results across 200/1000/5000 pkt/s thresholds, because the tested attack (~39,062 pkt/s) is far above all three — an honest property of this specific test, not a bug (see <a href="#wu-limitations">limitations</a>).</figcaption>
-    </figure>
-
-    <figure class="wu-fig">
-      <img src="graphs/04_multi_attacker_comparison.png" alt="Bar charts comparing legitimate packet loss and detection latency between one attacker and three simultaneous attackers">
-      <figcaption>Fig. 4 — Experiment 6: three simultaneous 15 Mbps attackers cause roughly double the legitimate loss of one 20 Mbps attacker (9.5% vs. 5.2%), while detection latency for the first attacker caught stays ~1 polling interval in both cases.</figcaption>
-    </figure>
-  </section>
-
-  <section class="wu-sec" id="wu-bugs">
-    <h2><span class="num">04</span>Bugs found along the way</h2>
-    <p>Two real correctness bugs were found while building traffic monitoring — both confirmed with actual packet captures before being called "fixed," not assumed.</p>
-
-    <div class="wu-bug">
-      <span class="tag">Bug 1 — forwarding</span>
-      <h4>eth_dst-only flow matching never learned a pure responder's MAC</h4>
-      <p>
-        <code>switch-stats-*.log</code> showed every single data packet hitting
-        the controller via packet-in for the <em>entire</em> run, well past
-        steady state. Cause: flow-mod rules matched only
-        <code>eth_dst = &lt;learned mac&gt;</code>, so a host that only ever replies
-        (the server) never had its own MAC learned — its replies always
-        matched the requester's already-installed flow and were forwarded
-        without ever reaching the controller. Fixed by matching on the
-        <strong>(eth_src, eth_dst) pair</strong>, the same approach the standard Ryu
-        <code>simple_switch_13</code> tutorial controller uses.
-      </p>
+<!-- ================= RESULTS ================= -->
+<section class="section" id="results">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="eyebrow">03 &middot; Experiments</div>
+      <h2>Methodology &amp; full results</h2>
+      <p>Six experiment groups, eleven total runs, each writing <code style="font-family:var(--font-mono);background:var(--inset);padding:1px 6px;border-radius:5px;border:1px solid var(--line)">flowmon.xml</code> (real per-flow throughput/delay/loss via ns-3 FlowMonitor), <code style="font-family:var(--font-mono);background:var(--inset);padding:1px 6px;border-radius:5px;border:1px solid var(--line)">monitor-stats.csv</code>, <code style="font-family:var(--font-mono);background:var(--inset);padding:1px 6px;border-radius:5px;border:1px solid var(--line)">detections.csv</code>, switch datapath logs, and per-port pcaps where enabled. Nothing below is hand-entered or estimated — all of it is generated directly from these files.</p>
     </div>
 
-    <div class="wu-bug">
-      <span class="tag">Bug 2 — channel modeling</span>
-      <h4>Unrealistic channel delay silently capped every host to ~500 pps</h4>
-      <p>
-        A configured 20&nbsp;Mbps flood (~39,062 expected pkt/s at 64-byte
-        packets) measured only ~350–430 pkt/s leaving the attacker's NIC —
-        regardless of whether the configured rate was 1&nbsp;Mbps or
-        20&nbsp;Mbps. Cause: every CSMA link used <code>Delay = 2ms</code>
-        (WAN-style latency on what should model a LAN); ns-3's CsmaChannel
-        holds the shared bus for the full propagation delay per
-        transmission, capping acquisitions at <code>1/0.002 = 500</code>/sec
-        regardless of application rate. Misdiagnosed twice before being
-        found (first suspected switch capacity, then the default FqCoDel
-        queue discipline) — fixed by changing <code>Delay</code> to
-        <code>MicroSeconds(2)</code> on every link; verified the attacker's port
-        then showed ~39,062 pps, matching theory exactly.
-      </p>
+    <div class="table-wrap reveal">
+      <table class="dtable">
+        <thead><tr><th>#</th><th>Group</th><th>What it varies</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td><code>exp1-normal</code></td><td>Normal traffic only &mdash; the baseline.</td></tr>
+          <tr><td>2</td><td><code>exp2-attack-no-mitigation</code></td><td>Attack; detection logs transitions but never blocks.</td></tr>
+          <tr><td>3</td><td><code>exp3-attack-mitigated</code></td><td>Attack with full detection + mitigation active.</td></tr>
+          <tr><td>4</td><td><code>exp4-intensity-{low,medium,high}</code></td><td>Attack rate: 5 / 20 / 50&nbsp;Mbps, mitigated.</td></tr>
+          <tr><td>5</td><td><code>exp5-threshold-{200,1000,5000}</code></td><td>Detection threshold (pkt/s), fixed 20&nbsp;Mbps attack, mitigated.</td></tr>
+          <tr><td>6</td><td><code>exp6-attackers-{1,3}</code></td><td>1 vs. 3 simultaneous attackers, mitigated.</td></tr>
+        </tbody>
+      </table>
     </div>
-  </section>
 
-  <section class="wu-sec" id="wu-limitations">
-    <h2><span class="num">05</span>Known limitations / honest caveats</h2>
-    <ul>
+    <div class="table-wrap reveal">
+      <table class="dtable">
+        <thead><tr><th>Flag</th><th>Default</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>--numClients</code></td><td>3</td><td>Legitimate client count</td></tr>
+          <tr><td><code>--perClientRate</code></td><td>500Kbps</td><td>Each client's UDP send rate</td></tr>
+          <tr><td><code>--numAttackers</code></td><td>1</td><td>Attacker count</td></tr>
+          <tr><td><code>--attackRate</code></td><td>20Mbps</td><td>Each attacker's flood rate</td></tr>
+          <tr><td><code>--threshold</code></td><td>1000</td><td>Detection threshold, packets/sec</td></tr>
+          <tr><td><code>--monitorInterval</code></td><td>1.0</td><td>Controller polling interval, seconds</td></tr>
+          <tr><td><code>--simTime</code></td><td>20</td><td>Total simulation duration, seconds</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="result-stats reveal-scale">
+      <div class="glass-card rstat good"><div class="v">0.0%</div><div class="c">Loss, normal traffic</div></div>
+      <div class="glass-card rstat bad"><div class="v">46.9%</div><div class="c">Loss, attack unmitigated</div></div>
+      <div class="glass-card rstat good"><div class="v">5.2%</div><div class="c">Loss, attack mitigated</div></div>
+      <div class="glass-card rstat"><div class="v">~1.0s</div><div class="c">Detection latency</div></div>
+    </div>
+
+    <div class="table-wrap reveal">
+      <table class="dtable">
+        <thead><tr><th>Experiment</th><th class="num">Legit loss</th><th class="num">Legit throughput</th><th class="num">Avg delay</th><th class="num">Detection delay</th></tr></thead>
+        <tbody>
+          <tr><td>Normal traffic</td><td class="num">0.0%</td><td class="num">1.416 Mbps</td><td class="num">0.147 ms</td><td class="num">&mdash;</td></tr>
+          <tr><td>Attack, no mitigation</td><td class="num">46.9%</td><td class="num">0.752 Mbps</td><td class="num">1.19 ms</td><td class="num">1.003 s</td></tr>
+          <tr class="hl"><td>Attack, mitigated</td><td class="num">5.2%</td><td class="num">1.342 Mbps</td><td class="num">0.604 ms</td><td class="num">1.003 s</td></tr>
+          <tr><td>Intensity: low (5 Mbps)</td><td class="num">1.19%</td><td class="num">1.399 Mbps</td><td class="num">1.012 ms</td><td class="num">1.003 s</td></tr>
+          <tr><td>Intensity: medium (20 Mbps)</td><td class="num">5.2%</td><td class="num">1.342 Mbps</td><td class="num">0.604 ms</td><td class="num">1.003 s</td></tr>
+          <tr><td>Intensity: high (50 Mbps)</td><td class="num">5.19%</td><td class="num">1.342 Mbps</td><td class="num">0.605 ms</td><td class="num">1.003 s</td></tr>
+          <tr><td>Threshold: 200 pkt/s</td><td class="num">5.2%</td><td class="num">1.342 Mbps</td><td class="num">0.604 ms</td><td class="num">1.003 s</td></tr>
+          <tr><td>Threshold: 1000 pkt/s</td><td class="num">5.2%</td><td class="num">1.342 Mbps</td><td class="num">0.604 ms</td><td class="num">1.003 s</td></tr>
+          <tr><td>Threshold: 5000 pkt/s</td><td class="num">5.2%</td><td class="num">1.342 Mbps</td><td class="num">0.604 ms</td><td class="num">1.003 s</td></tr>
+          <tr><td>1 attacker, mitigated</td><td class="num">5.2%</td><td class="num">1.342 Mbps</td><td class="num">0.604 ms</td><td class="num">1.003 s</td></tr>
+          <tr><td>3 attackers, mitigated</td><td class="num">9.5%</td><td class="num">1.281 Mbps</td><td class="num">0.761 ms</td><td class="num">1.006 s</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="fig-grid">
+      <figure class="glass-card fig-card reveal" style="--d:0">
+        <img src="graphs/01_before_after_mitigation.png" alt="Bar charts comparing packet loss and throughput for normal traffic, attack without mitigation, and attack with mitigation">
+        <figcaption><b>Fig. 1</b> &mdash; The headline result: mitigation cuts legitimate packet loss from 46.9% to 5.2% and restores throughput from 0.75 Mbps back to 1.34 Mbps, against the identical attack.</figcaption>
+      </figure>
+      <figure class="glass-card fig-card reveal" style="--d:1">
+        <img src="graphs/02_attack_intensity_sweep.png" alt="Line charts of legitimate throughput, packet loss, and delay against attack rate of 5, 20, and 50 Mbps, with mitigation active">
+        <figcaption><b>Fig. 2</b> &mdash; Experiment 4: once the attack crosses the detection threshold, mitigation caps legitimate-side damage regardless of how much further the attack rate climbs &mdash; loss and delay flatten out rather than keep degrading.</figcaption>
+      </figure>
+      <figure class="glass-card fig-card reveal" style="--d:2">
+        <img src="graphs/03_detection_threshold_sweep.png" alt="Bar charts of detection latency and legitimate loss across detection thresholds of 200, 1000, and 5000 packets per second">
+        <figcaption><b>Fig. 3</b> &mdash; Experiment 5: flat results across 200/1000/5000 pkt/s thresholds, because the tested attack (~39,062 pkt/s) is far above all three &mdash; an honest property of this specific test, not a bug.</figcaption>
+      </figure>
+      <figure class="glass-card fig-card reveal" style="--d:3">
+        <img src="graphs/04_multi_attacker_comparison.png" alt="Bar charts comparing legitimate packet loss and detection latency between one attacker and three simultaneous attackers">
+        <figcaption><b>Fig. 4</b> &mdash; Experiment 6: three simultaneous 15 Mbps attackers cause roughly double the legitimate loss of one 20 Mbps attacker (9.5% vs. 5.2%), while detection latency stays ~1 polling interval in both cases.</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<!-- ================= BUGS & LIMITATIONS ================= -->
+<section class="section" id="bugs">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="eyebrow">04 &middot; Honesty</div>
+      <h2>Bugs found &amp; known limitations</h2>
+      <p>Two real correctness bugs were found while building traffic monitoring &mdash; both confirmed with actual packet captures before being called "fixed," not assumed.</p>
+    </div>
+
+    <div class="bug-grid">
+      <div class="glass-card bug-card reveal" style="--d:0">
+        <div class="btag">Bug 1 &middot; Forwarding</div>
+        <h4>eth_dst-only flow matching never learned a pure responder's MAC</h4>
+        <p><code>switch-stats-*.log</code> showed every single data packet hitting the controller via packet-in for the <em>entire</em> run, well past steady state. Cause: flow-mod rules matched only <code>eth_dst = &lt;learned mac&gt;</code>, so a host that only ever replies (the server) never had its own MAC learned &mdash; its replies always matched the requester's already-installed flow and were forwarded without ever reaching the controller. Fixed by matching on the <strong>(eth_src, eth_dst) pair</strong>, the same approach the standard Ryu <code>simple_switch_13</code> tutorial controller uses.</p>
+      </div>
+      <div class="glass-card bug-card reveal" style="--d:1">
+        <div class="btag">Bug 2 &middot; Channel modeling</div>
+        <h4>Unrealistic channel delay silently capped every host to ~500 pps</h4>
+        <p>A configured 20&nbsp;Mbps flood (~39,062 expected pkt/s at 64-byte packets) measured only ~350&ndash;430 pkt/s leaving the attacker's NIC &mdash; regardless of whether the configured rate was 1&nbsp;Mbps or 20&nbsp;Mbps. Cause: every CSMA link used <code>Delay = 2ms</code> (WAN-style latency on what should model a LAN); ns-3's CsmaChannel holds the shared bus for the full propagation delay per transmission, capping acquisitions at <code>1/0.002 = 500</code>/sec regardless of application rate. Misdiagnosed twice before being found (first suspected switch capacity, then the default FqCoDel queue discipline) &mdash; fixed by changing <code>Delay</code> to <code>MicroSeconds(2)</code> on every link; verified the attacker's port then showed ~39,062 pps, matching theory exactly.</p>
+      </div>
+    </div>
+
+    <div style="height:40px"></div>
+
+    <ul class="limit-list reveal">
       <li>
-        The detection-threshold sweep (Experiment 5) shows flat results
-        across 200/1000/5000 pkt/s because the tested attack
-        (~39,062 pkt/s) sits far above all three — a real property of
-        that experiment's specific setup, not a bug. A threshold
-        <em>between</em> the legitimate rate (~122 pkt/s) and a weaker attack
-        would be a more sensitive test; the parameters make this easy to
-        run (<code>--attackRate=1.5Mbps --threshold=300</code>, for instance).
+        <svg class="li-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4M12 17h.01M10.3 3.9L2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>The detection-threshold sweep (Experiment 5) shows flat results across 200/1000/5000 pkt/s because the tested attack (~39,062 pkt/s) sits far above all three &mdash; a real property of that experiment's specific setup, not a bug. A threshold <em>between</em> the legitimate rate (~122 pkt/s) and a weaker attack would be a more sensitive test; the parameters make this easy to run (<code>--attackRate=1.5Mbps --threshold=300</code>, for instance).</span>
       </li>
       <li>
-        Mitigation blocks by <strong>switch port</strong>, not by IP/MAC identity —
-        correct and sufficient for this topology (one host per port), but
-        would need extending (matching on <code>eth_src</code>/<code>ip_src</code> instead
-        of <code>in_port</code>) for a topology where multiple hosts can share a
-        port.
+        <svg class="li-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4M12 17h.01M10.3 3.9L2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>Mitigation blocks by <strong>switch port</strong>, not by IP/MAC identity &mdash; correct and sufficient for this topology (one host per port), but would need extending (matching on <code>eth_src</code>/<code>ip_src</code> instead of <code>in_port</code>) for a topology where multiple hosts can share a port.</span>
       </li>
       <li>
-        Detection latency is bounded below by <code>MonitorInterval</code>
-        (default 1s) — an attack is never caught faster than one polling
-        cycle. Lowering the interval trades CPU/control-channel overhead
-        for faster detection.
+        <svg class="li-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4M12 17h.01M10.3 3.9L2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>Detection latency is bounded below by <code>MonitorInterval</code> (default 1s) &mdash; an attack is never caught faster than one polling cycle. Lowering the interval trades CPU/control-channel overhead for faster detection.</span>
       </li>
     </ul>
-  </section>
-
-  <section class="wu-sec" id="wu-stack">
-    <h2><span class="num">06</span>Tech stack &amp; reproducing it</h2>
-    <table class="wu-table">
-      <thead><tr><th>Component</th><th>Version used</th></tr></thead>
-      <tbody>
-        <tr><td>OS</td><td>Ubuntu 24.04.4 LTS under WSL2</td></tr>
-        <tr><td>ns-3</td><td>3.40 (<code>gitlab.com/nsnam/ns-3-dev</code>, tag <code>ns-3.40</code>)</td></tr>
-        <tr><td>OFSwitch13</td><td>5.2.3 (<code>github.com/ljerezchaves/ofswitch13</code>)</td></tr>
-        <tr><td>GCC/G++</td><td>13.3.0</td></tr>
-        <tr><td>CMake</td><td>3.28.3</td></tr>
-        <tr><td>Python</td><td>3.12, matplotlib (for <code>scripts/analysis/</code> graphs only)</td></tr>
-      </tbody>
-    </table>
-    <p>
-      Full install steps, the exact apt package list, and two real
-      environment bugs (a glibc/strlcpy conflict on Ubuntu 24.04, and the
-      channel-delay issue above) are documented in
-      <code>documentation/environment.md</code>.
-    </p>
-    <p>Once ns-3 + OFSwitch13 are built, this project's own code is driven by one script:</p>
-    <pre><code>cd scripts
-bash run-all.sh   # build -&gt; run every experiment -&gt; generate graphs -&gt; print summary</code></pre>
-    <p>See the <a href="https://github.com/TheAaryanPrakash/SDN-DDOS-UsingNS3#readme">main README</a> for the full command reference, including running a single simulation with custom parameters.</p>
-  </section>
-
-  <div class="wu-footer">
-    <p>
-      SDN-Based DDoS Detection and Mitigation Using NS-3 — a final-year
-      Network Programming project, built with
-      <a href="https://github.com/amalrtms">amalrtms</a>.
-      <a href="https://github.com/TheAaryanPrakash/SDN-DDOS-UsingNS3">Source on GitHub</a>
-    </p>
-    <a class="wu-top" href="#top">↑ Back to top</a>
   </div>
-</div>
+</section>
+
+<!-- ================= STACK / REPRODUCE ================= -->
+<section class="section" id="stack">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="eyebrow">05 &middot; Reproduce it</div>
+      <h2>Tech stack &amp; reproducing it</h2>
+      <p>Everything here was built and measured on this exact stack. Once ns-3 and OFSwitch13 are built, this project's own code is driven by one script.</p>
+    </div>
+
+    <div class="stack-grid">
+      <div class="reveal" style="--d:0">
+        <div class="table-wrap" style="margin-top:0">
+          <table class="dtable">
+            <thead><tr><th>Component</th><th>Version used</th></tr></thead>
+            <tbody>
+              <tr><td>OS</td><td>Ubuntu 24.04.4 LTS under WSL2</td></tr>
+              <tr><td>ns-3</td><td>3.40 (<code>gitlab.com/nsnam/ns-3-dev</code>)</td></tr>
+              <tr><td>OFSwitch13</td><td>5.2.3 (<code>github.com/ljerezchaves/ofswitch13</code>)</td></tr>
+              <tr><td>GCC/G++</td><td>13.3.0</td></tr>
+              <tr><td>CMake</td><td>3.28.3</td></tr>
+              <tr><td>Python</td><td>3.12, matplotlib (graphs only)</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p style="font-size:13.5px;color:var(--text-dim);line-height:1.75;margin-top:16px">
+          Full install steps, the exact apt package list, and two real environment bugs (a glibc/strlcpy conflict on
+          Ubuntu 24.04, and the channel-delay issue above) are documented in
+          <code style="font-family:var(--font-mono);background:var(--inset);padding:1px 6px;border-radius:5px;border:1px solid var(--line)">documentation/environment.md</code>.
+        </p>
+      </div>
+
+      <ol class="repro-steps reveal" style="--d:1">
+        <li>
+          <h5>Build ns-3 + OFSwitch13</h5>
+          <p>Clone ns-3.40, drop OFSwitch13 5.2.3 into <code style="font-family:var(--font-mono)">contrib/</code>, apply the compatibility patch, then <code style="font-family:var(--font-mono)">./ns3 configure &amp;&amp; ./ns3 build</code>.</p>
+        </li>
+        <li>
+          <h5>Run everything</h5>
+          <div class="code-block" style="margin:8px 0 0"><pre>cd scripts
+bash run-all.sh   <span class="c-str"># build -&gt; run every experiment -&gt; graphs -&gt; summary</span></pre></div>
+        </li>
+        <li>
+          <h5>Tweak a single run</h5>
+          <div class="code-block" style="margin:8px 0 0"><pre>bash sync-build-run.sh ddos-mitigated -- \
+  <span class="c-key">--attackRate</span>=40Mbps <span class="c-key">--threshold</span>=2000</pre></div>
+        </li>
+        <li>
+          <h5>Regenerate this page's data</h5>
+          <div class="code-block" style="margin:8px 0 0"><pre>python3 scripts/analysis/build_dashboard.py</pre></div>
+        </li>
+      </ol>
+    </div>
+
+    <div class="reveal" style="margin-top:44px;text-align:center">
+      <a href="https://github.com/TheAaryanPrakash/SDN-DDOS-UsingNS3#readme" class="btn btn-primary">
+        Read the full command reference
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </a>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="footer">
+  <div class="container">
+    <div class="fbrand">
+      <svg viewBox="0 0 40 40" fill="none" aria-hidden="true">
+        <path d="M20 6 L31 11.5 V20 C31 27 26 31.5 20 34 C14 31.5 9 27 9 20 V11.5 Z" fill="none" stroke="url(#fgrad)" stroke-width="2.2" stroke-linejoin="round"/>
+        <circle cx="20" cy="18.5" r="3.1" fill="url(#fgrad)"/>
+        <path d="M20 21.6 V27" stroke="url(#fgrad)" stroke-width="2.2" stroke-linecap="round"/>
+        <defs><linearGradient id="fgrad" x1="0" y1="0" x2="40" y2="40"><stop stop-color="#7c6cf6"/><stop offset="1" stop-color="#38bdf8"/></linearGradient></defs>
+      </svg>
+      SDN DDoS Shield
+    </div>
+    <p>SDN-Based DDoS Detection and Mitigation Using NS-3 &mdash; a final-year Network Programming project, built with <a href="https://github.com/amalrtms" style="color:var(--brand-2)">amalrtms</a>.</p>
+    <div class="flinks">
+      <a href="https://github.com/TheAaryanPrakash/SDN-DDOS-UsingNS3">Source on GitHub</a>
+      <a href="#overview">Back to top</a>
+      <a href="https://github.com/TheAaryanPrakash/SDN-DDOS-UsingNS3/blob/main/documentation/environment.md">Environment notes</a>
+    </div>
+    <div class="fmeta">All 13 project phases complete &middot; 11 experiment runs &middot; real OpenFlow 1.3</div>
+  </div>
+</footer>
+
+<a href="#overview" class="top-fab" id="topFab" aria-label="Back to top">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+</a>
 
 <script>
 /* ===== real ns-3 data (embedded) ===== */
@@ -648,8 +1098,6 @@ function palette(){
      server:g('--server'),switch:g('--switch'),ok:g('--ok'),warn:g('--warn'),crit:g('--crit')};
 }
 palette();
-matchMedia('(prefers-color-scheme:dark)').addEventListener('change',palette);
-new MutationObserver(palette).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
 
 /* ===== interpolate per-port pps at sim time t ===== */
 function rateAt(ts,port,t){
@@ -678,7 +1126,7 @@ function layoutTopo(){
   TW=r.width; TH=r.height;
   topo.width=Math.round(TW*dpr); topo.height=Math.round(TH*dpr);
   tctx.setTransform(dpr,0,0,dpr,0,0);
-  const hx=TW*0.145, sx=TW*0.5, vx=TW*0.845;
+  const hx=Math.max(92,TW*0.145), sx=TW*0.5, vx=Math.min(TW-92,TW*0.845);
   nodes={
     c0:{x:hx,y:TH*0.17,role:'client',port:"1",label:'Client .1'},
     c1:{x:hx,y:TH*0.33,role:'client',port:"2",label:'Client .2'},
@@ -706,7 +1154,7 @@ function spawnPackets(dt){
     }
   }
 }
-function congested(){ // bottleneck swamped: attack on, packets still forwarded to server
+function congested(){
   const atk=rateAt(curSet().ts,"4",t);
   return atk>THR && !blocked;
 }
@@ -716,9 +1164,9 @@ function updatePackets(dt){
     if(p.dropAt>=0){ p.alpha-=dt*4.5; continue; }
     if(p.seg===0){
       p.u+=p.sp0*dt;
-      if(p.u>=1){ // reached switch
+      if(p.u>=1){
         if(p.role==='attacker' && blk){ p.dropAt=0; p.alpha=1; p.dx=nodes.sw.x; p.dy=nodes.sw.y; continue; }
-        if(cong){ // bottleneck loss
+        if(cong){
           const loss = p.role==='attacker'?0.74:0.5;
           if(Math.random()<loss){ p.dropAt=0; p.alpha=1; p.dx=nodes.sw.x; p.dy=nodes.sw.y; continue; }
         }
@@ -726,7 +1174,7 @@ function updatePackets(dt){
       }
     } else {
       p.u+=p.sp1*dt;
-      if(p.u>=1){ p.dropAt=-2; } // delivered
+      if(p.u>=1){ p.dropAt=-2; }
     }
   }
   packets=packets.filter(p=>p.dropAt!==-2 && p.alpha>0);
@@ -751,7 +1199,6 @@ function roundRect(x,y,w,h,r){tctx.beginPath();tctx.moveTo(x+r,y);tctx.arcTo(x+w
 function drawTopo(){
   tctx.clearRect(0,0,TW,TH);
   const cong=congested(), blk=blocked;
-  // links host->switch
   for(const k of ['c0','c1','c2','atk']){
     const n=nodes[k];
     tctx.beginPath(); tctx.moveTo(n.x,n.y); tctx.lineTo(nodes.sw.x,nodes.sw.y);
@@ -759,24 +1206,20 @@ function drawTopo(){
     tctx.strokeStyle=k==='atk'&&rateAt(curSet().ts,"4",t)>THR?P.attacker:P.line;
     tctx.globalAlpha=k==='atk'&&rateAt(curSet().ts,"4",t)>THR?0.5:0.8; tctx.stroke(); tctx.globalAlpha=1;
   }
-  // bottleneck switch->server
   tctx.beginPath(); tctx.moveTo(nodes.sw.x,nodes.sw.y); tctx.lineTo(nodes.srv.x,nodes.srv.y);
   tctx.lineWidth=cong?6:3.2; tctx.strokeStyle=cong?P.crit:(blk?P.ok:P.line); tctx.globalAlpha=cong?0.55:0.7; tctx.stroke(); tctx.globalAlpha=1;
-  // bottleneck label
-  tctx.font='600 10px '+'"IBM Plex Mono",monospace'; tctx.textAlign='center';
+  tctx.font='600 10px Inter,sans-serif'; tctx.textAlign='center';
   tctx.fillStyle=cong?P.crit:P.faint;
   tctx.fillText(cong?'10 Mbps · SATURATED':'10 Mbps link',(nodes.sw.x+nodes.srv.x)/2,nodes.sw.y-13);
-  // controller dashed link
   tctx.setLineDash([4,4]); tctx.beginPath(); tctx.moveTo(nodes.ctl.x,nodes.ctl.y+16); tctx.lineTo(nodes.sw.x,nodes.sw.y-20);
   tctx.lineWidth=1.6; tctx.strokeStyle=P.accent; tctx.globalAlpha=.6; tctx.stroke(); tctx.setLineDash([]); tctx.globalAlpha=1;
-  tctx.font='9px "IBM Plex Mono",monospace'; tctx.fillStyle=P.faint; tctx.textAlign='left';
+  tctx.font='9px "JetBrains Mono",monospace'; tctx.fillStyle=P.faint; tctx.textAlign='left';
   tctx.fillText('OpenFlow',nodes.ctl.x+8,(nodes.ctl.y+nodes.sw.y)/2);
 
-  // packets
   for(const p of packets){
     const pos=packetPos(p), col=p.role==='attacker'?P.attacker:P.client;
     tctx.globalAlpha=Math.max(0,p.alpha);
-    if(p.dropAt>=0){ // dropped mark
+    if(p.dropAt>=0){
       const s=3.2; tctx.strokeStyle=blk&&p.role==='attacker'?P.accent:P.crit; tctx.lineWidth=1.6;
       tctx.beginPath(); tctx.moveTo(pos.x-s,pos.y-s);tctx.lineTo(pos.x+s,pos.y+s);tctx.moveTo(pos.x+s,pos.y-s);tctx.lineTo(pos.x-s,pos.y+s); tctx.stroke();
     } else {
@@ -785,7 +1228,6 @@ function drawTopo(){
     tctx.globalAlpha=1;
   }
 
-  // DROP shield on attacker path near switch
   if(blk){
     const a=nodes.atk, s=nodes.sw, mx=lerp(a.x,s.x,0.72), my=lerp(a.y,s.y,0.72);
     const pulse=reduce?1:(1+0.12*Math.sin(performance.now()/180));
@@ -793,30 +1235,27 @@ function drawTopo(){
     tctx.beginPath(); tctx.arc(0,0,13*pulse,0,7);
     tctx.fillStyle=P.accent; tctx.globalAlpha=.16; tctx.fill(); tctx.globalAlpha=1;
     tctx.lineWidth=2.2; tctx.strokeStyle=P.accent; tctx.stroke();
-    tctx.fillStyle=P.accent; tctx.font='700 11px "IBM Plex Sans",sans-serif'; tctx.textAlign='center'; tctx.textBaseline='middle';
+    tctx.fillStyle=P.accent; tctx.font='700 11px Inter,sans-serif'; tctx.textAlign='center'; tctx.textBaseline='middle';
     tctx.fillText('✕',0,0.5); tctx.restore();
   }
 
-  // nodes
   const atkHot=rateAt(curSet().ts,"4",t)>THR;
   drawNode(nodes.sw,16,P.switch,true);
   drawNode(nodes.srv,15,P.server,true);
   for(const k of ['c0','c1','c2']) drawNode(nodes[k],9,P.client,false);
   drawNode(nodes.atk,11,P.attacker,atkHot);
-  // controller box
   const c=nodes.ctl; roundRect(c.x-19,c.y-13,38,26,7); tctx.fillStyle=P.panel; tctx.fill();
   tctx.lineWidth=detected?3:2; tctx.strokeStyle=P.accent; tctx.stroke();
-  tctx.fillStyle=P.accent; tctx.font='700 11px "IBM Plex Sans",sans-serif'; tctx.textAlign='center'; tctx.textBaseline='middle';
+  tctx.fillStyle=P.accent; tctx.font='700 11px Inter,sans-serif'; tctx.textAlign='center'; tctx.textBaseline='middle';
   tctx.fillText('CTL',c.x,c.y);
-  // labels
-  tctx.textBaseline='alphabetic'; tctx.font='600 10.5px "IBM Plex Sans",sans-serif';
+  tctx.textBaseline='alphabetic'; tctx.font='600 10.5px Inter,sans-serif';
   tctx.fillStyle=P.muted; tctx.textAlign='right';
   tctx.fillText('Client .1',nodes.c0.x-14,nodes.c0.y+4);
   tctx.fillText('Client .2',nodes.c1.x-14,nodes.c1.y+4);
   tctx.fillText('Client .3',nodes.c2.x-14,nodes.c2.y+4);
-  tctx.fillStyle=atkHot?P.attacker:P.muted; tctx.font=(atkHot?'700 ':'600 ')+'10.5px "IBM Plex Sans",sans-serif';
+  tctx.fillStyle=atkHot?P.attacker:P.muted; tctx.font=(atkHot?'700 ':'600 ')+'10.5px Inter,sans-serif';
   tctx.fillText('Attacker .4',nodes.atk.x-16,nodes.atk.y+4);
-  tctx.textAlign='left'; tctx.fillStyle=P.muted; tctx.font='600 10.5px "IBM Plex Sans",sans-serif';
+  tctx.textAlign='left'; tctx.fillStyle=P.muted; tctx.font='600 10.5px Inter,sans-serif';
   tctx.fillText('Switch',nodes.sw.x+22,nodes.sw.y+30);
   tctx.fillText('Server',nodes.srv.x+20,nodes.srv.y+4);
   tctx.fillStyle=P.accent; tctx.fillText('Controller',nodes.ctl.x+26,nodes.ctl.y+4);
@@ -831,13 +1270,12 @@ function layoutChart(){
   chart.width=Math.round(CW*dpr); chart.height=Math.round(CH*dpr);
   cctx.setTransform(dpr,0,0,dpr,0,0);
 }
-const Y0=0, Y1=5; // log10 range 1 .. 100000
+const Y0=0, Y1=5;
 function xAt(tt){return pad.l+(tt/SIM)*(CW-pad.l-pad.r);}
 function yAt(v){const lg=Math.log10(Math.max(v,1)); return CH-pad.b-((lg-Y0)/(Y1-Y0))*(CH-pad.t-pad.b);}
 function drawChart(){
   cctx.clearRect(0,0,CW,CH);
-  // gridlines
-  cctx.font='9px "IBM Plex Mono",monospace'; cctx.textBaseline='middle';
+  cctx.font='9px "JetBrains Mono",monospace'; cctx.textBaseline='middle';
   const labels={1:'1',10:'10',100:'100',1000:'1k',10000:'10k',100000:'100k'};
   for(const v in labels){
     const y=yAt(+v);
@@ -845,13 +1283,10 @@ function drawChart(){
     cctx.beginPath(); cctx.moveTo(pad.l,y); cctx.lineTo(CW-pad.r,y); cctx.stroke(); cctx.globalAlpha=1;
     cctx.fillStyle=P.faint; cctx.textAlign='right'; cctx.fillText(labels[v],pad.l-6,y);
   }
-  // x ticks
   cctx.textAlign='center'; cctx.fillStyle=P.faint;
   for(let s=0;s<=20;s+=5){ cctx.fillText(s+'s',xAt(s),CH-pad.b+12); }
-  // threshold
   const yt=yAt(THR); cctx.strokeStyle=P.warn; cctx.lineWidth=1.4; cctx.setLineDash([5,4]);
   cctx.beginPath(); cctx.moveTo(pad.l,yt); cctx.lineTo(CW-pad.r,yt); cctx.stroke(); cctx.setLineDash([]);
-  // series up to current t
   const set=curSet(); const N=Math.max(2,Math.floor(t*6));
   function line(fn,col,w,fill){
     cctx.beginPath();
@@ -863,10 +1298,8 @@ function drawChart(){
   const atkFn=tt=>rateAt(set.ts,"4",tt), cliFn=tt=>clientRate(set,tt);
   line(atkFn,P.attacker,0,true); line(atkFn,P.attacker,2.2,false);
   line(cliFn,P.client,2.2,false);
-  // playhead
   const xh=xAt(Math.min(t,SIM)); cctx.strokeStyle=P.accent; cctx.globalAlpha=.5; cctx.lineWidth=1.2;
   cctx.beginPath(); cctx.moveTo(xh,pad.t); cctx.lineTo(xh,CH-pad.b); cctx.stroke(); cctx.globalAlpha=1;
-  // detection marker
   if(t>=DET_T){ const xd=xAt(DET_T); cctx.fillStyle=P.crit;
     cctx.beginPath(); cctx.arc(xd,yAt(39062),3.2,0,7); cctx.fill(); }
 }
@@ -916,7 +1349,6 @@ function setStatus(){
   topobadge.textContent = blocked?'mitigating':(atk>THR?'flood active':'data plane');
 }
 
-/* ===== timeline/log scheduling ===== */
 function updateEvents(){
   const set=curSet();
   if(t>=1.0) addLog('hs','1.0','Controller ↔ switch handshake OK · L2 learning active');
@@ -931,17 +1363,13 @@ function updateEvents(){
   }
 }
 
-/* ===== main loop ===== */
 function recompute(){
   const atk=rateAt(curSet().ts,"4",t);
   blocked = mitigation && detected && atk>THR;
-  // live legit-delivery estimate: ~100% normal, dips hard while the open flood
-  // saturates the bottleneck, recovers once the DROP rule is installed.
   let target = 100;
-  if(atk>THR && !blocked) target = 38;   // bottleneck saturated, legit packets lost
-  else if(blocked) target = 92;          // attacker dropped at switch, clients recover
-  deliv += (target-deliv)*0.9;           // snap toward target
-  // drop counter integrates attacker pps while blocked
+  if(atk>THR && !blocked) target = 38;
+  else if(blocked) target = 92;
+  deliv += (target-deliv)*0.9;
   if(blocked){ dropCount += atk*(t-prevT); }
   prevT=t;
 }
@@ -961,7 +1389,7 @@ function frame(ts){
   if(!last)last=ts; let dt=(ts-last)/1000; last=ts; if(dt>0.1)dt=0.1;
   if(playing){
     t+=dt*speed;
-    if(t>=SIM){ t=SIM; playing=false; playBtn.textContent='▶ Play'; }
+    if(t>=SIM){ t=SIM; playing=false; playBtn.innerHTML='&#9654; Play'; }
     updateEvents();
   }
   spawnPackets(dt); updatePackets(dt);
@@ -969,15 +1397,14 @@ function frame(ts){
   requestAnimationFrame(frame);
 }
 
-/* ===== controls ===== */
 const playBtn=document.getElementById('play');
 function reset(hard){
   t=0;prevT=0;detected=false;blocked=false;dropCount=0;deliv=100;flowDropAdded=false;packets=[];
   spawnAcc={c0:0,c1:0,c2:0,atk:0}; resetLog();
-  if(hard){playing=false;playBtn.textContent='▶ Play';}
+  if(hard){playing=false;playBtn.innerHTML='&#9654; Play';}
 }
-playBtn.onclick=()=>{ if(t>=SIM) reset(false); playing=!playing; playBtn.textContent=playing?'❚❚ Pause':'▶ Play'; last=0; };
-document.getElementById('restart').onclick=()=>{ reset(true); playing=true; playBtn.textContent='❚❚ Pause'; last=0; };
+playBtn.onclick=()=>{ if(t>=SIM) reset(false); playing=!playing; playBtn.innerHTML=playing?'&#10074;&#10074; Pause':'&#9654; Play'; last=0; };
+document.getElementById('restart').onclick=()=>{ reset(true); playing=true; playBtn.innerHTML='&#10074;&#10074; Pause'; last=0; };
 document.querySelectorAll('[data-spd]').forEach(b=>b.onclick=()=>{
   speed=+b.dataset.spd; document.querySelectorAll('[data-spd]').forEach(x=>x.setAttribute('aria-pressed',x===b));
 });
@@ -986,39 +1413,175 @@ function setMit(on){ mitigation=on; mitBtn.setAttribute('aria-pressed',on);
   mitBtn.querySelector('.lab').textContent=on?'Mitigation ON':'Mitigation OFF';
   document.getElementById('ob-att').classList.toggle('cur',!on);
   document.getElementById('ob-mit').classList.toggle('cur',on);
-  // re-evaluate from current time
   detected=false;blocked=false;dropCount=0;flowDropAdded=false;resetLog();
-  updateEvents(); // rebuild log for the current time under the new setting
+  updateEvents();
 }
 mitBtn.onclick=()=>setMit(!mitigation);
-// scrub
 const track=document.getElementById('track');
 function scrubTo(clientX){
   const r=track.getBoundingClientRect(); let f=(clientX-r.left)/r.width; f=Math.max(0,Math.min(1,f));
   const nt=f*SIM;
-  // if scrubbing backwards past events, reset detection state and rebuild
   reset(false); t=nt; prevT=nt;
-  // fast-forward event/drop state to t
   detected = t>=DET_T; blocked = mitigation && detected && rateAt(curSet().ts,"4",t)>THR;
   if(blocked){ dropCount = rateAt(curSet().ts,"4",t)*(t-DET_T); flowDropAdded=true; }
   resetLog(); updateEvents();
 }
 let scrubbing=false;
-track.addEventListener('pointerdown',e=>{scrubbing=true;track.setPointerCapture(e.pointerId);playing=false;playBtn.textContent='▶ Play';scrubTo(e.clientX);});
+track.addEventListener('pointerdown',e=>{scrubbing=true;track.setPointerCapture(e.pointerId);playing=false;playBtn.innerHTML='&#9654; Play';scrubTo(e.clientX);});
 track.addEventListener('pointermove',e=>{if(scrubbing)scrubTo(e.clientX);});
 track.addEventListener('pointerup',()=>scrubbing=false);
 track.addEventListener('keydown',e=>{ if(e.key==='ArrowRight'){t=Math.min(SIM,t+0.5);scrubTo(track.getBoundingClientRect().left+ (t/SIM)*track.getBoundingClientRect().width);e.preventDefault();}
   if(e.key==='ArrowLeft'){t=Math.max(0,t-0.5);scrubTo(track.getBoundingClientRect().left+ (t/SIM)*track.getBoundingClientRect().width);e.preventDefault();} });
 
-/* detection marker position on timeline */
 document.getElementById('detmk').style.left=(DET_T/SIM*100)+'%';
 
-/* resize */
 function resizeAll(){ layoutTopo(); layoutChart(); }
 const ro=new ResizeObserver(resizeAll); ro.observe(topo); ro.observe(chart);
 window.addEventListener('resize',resizeAll);
 resizeAll(); setMit(true); reset(true);
-// autoplay the story
-setTimeout(()=>{ playing=true; playBtn.textContent='❚❚ Pause'; last=0; }, 500);
+let demoStarted=false;
+const demoIO=new IntersectionObserver((entries)=>{
+  entries.forEach(e=>{
+    if(e.isIntersecting && !demoStarted){
+      demoStarted=true;
+      setTimeout(()=>{ playing=true; playBtn.innerHTML='&#10074;&#10074; Pause'; last=0; }, 400);
+    }
+  });
+},{threshold:.3});
+demoIO.observe(document.getElementById('demo'));
 requestAnimationFrame(frame);
 </script>
+
+<script>
+/* ===== site chrome: nav, reveal, counters, parallax, hero particles ===== */
+(function(){
+  const reduceMotion = matchMedia('(prefers-reduced-motion:reduce)').matches;
+
+  /* mobile nav toggle */
+  const navToggle=document.getElementById('navToggle'), navLinksEl=document.getElementById('navLinks');
+  navToggle.addEventListener('click',()=>{
+    const open=navLinksEl.classList.toggle('open');
+    navToggle.setAttribute('aria-expanded',open);
+  });
+  navLinksEl.querySelectorAll('a').forEach(a=>a.addEventListener('click',()=>navLinksEl.classList.remove('open')));
+
+  /* nav scrollspy */
+  const navLinkEls=[...document.querySelectorAll('.nav-links a')];
+  const spySections=[document.getElementById('overview'),...document.querySelectorAll('main section[id]')];
+  const spyIO=new IntersectionObserver((entries)=>{
+    entries.forEach(e=>{
+      if(e.isIntersecting){
+        navLinkEls.forEach(a=>a.classList.toggle('active', a.getAttribute('href')==='#'+e.target.id));
+      }
+    });
+  },{rootMargin:'-42% 0px -52% 0px',threshold:0});
+  spySections.forEach(s=>s&&spyIO.observe(s));
+
+  /* nav progress + scroll shadow + back-to-top fab */
+  const navProgress=document.getElementById('navProgress'), topFab=document.getElementById('topFab');
+  function onScroll(){
+    const h=document.documentElement;
+    const max=h.scrollHeight-h.clientHeight;
+    const pct=max>0?h.scrollTop/max:0;
+    navProgress.style.transform='scaleX('+pct+')';
+    topFab.classList.toggle('show', h.scrollTop>700);
+  }
+  window.addEventListener('scroll',onScroll,{passive:true});
+  onScroll();
+
+  /* reveal-on-scroll */
+  const revealEls=document.querySelectorAll('.reveal,.reveal-scale');
+  const revealIO=new IntersectionObserver((entries)=>{
+    entries.forEach(e=>{
+      if(e.isIntersecting){ e.target.classList.add('in'); revealIO.unobserve(e.target); }
+    });
+  },{threshold:.12,rootMargin:'0px 0px -6% 0px'});
+  revealEls.forEach(el=>revealIO.observe(el));
+
+  /* staggered children inside grids: assign --d by index within common containers */
+  document.querySelectorAll('.arch-grid,.bug-grid,.fig-grid,.result-stats,.stat-grid').forEach(group=>{
+    [...group.children].forEach((child,i)=>{ if(child.classList.contains('reveal')||child.classList.contains('reveal-scale')) child.style.setProperty('--d',i); });
+  });
+
+  /* animated counters */
+  function animateCount(el){
+    const target=parseFloat(el.dataset.count), dec=+ (el.dataset.dec||0), suffix=el.dataset.suffix||'', prefix=el.dataset.prefix||'';
+    if(reduceMotion){ el.textContent=prefix+target.toFixed(dec)+suffix; return; }
+    const dur=1300, start=performance.now();
+    function step(now){
+      const p=Math.min(1,(now-start)/dur);
+      const eased=1-Math.pow(1-p,3);
+      el.textContent=prefix+(target*eased).toFixed(dec)+suffix;
+      if(p<1) requestAnimationFrame(step); else el.textContent=prefix+target.toFixed(dec)+suffix;
+    }
+    requestAnimationFrame(step);
+  }
+  const countEls=document.querySelectorAll('[data-count]');
+  const countIO=new IntersectionObserver((entries)=>{
+    entries.forEach(e=>{ if(e.isIntersecting){ animateCount(e.target); countIO.unobserve(e.target); } });
+  },{threshold:.6});
+  countEls.forEach(el=>countIO.observe(el));
+
+  /* hero blob parallax */
+  const blobs=document.querySelectorAll('.bg-fx .blob');
+  if(!reduceMotion){
+    let sy=0;
+    window.addEventListener('scroll',()=>{ sy=window.scrollY; },{passive:true});
+    function raf(){
+      blobs.forEach((b,i)=>{ b.style.transform='translate3d(0,'+(sy*(0.05+i*0.03))+'px,0)'; });
+      requestAnimationFrame(raf);
+    }
+    requestAnimationFrame(raf);
+  }
+
+  /* hero particle network canvas */
+  const hc=document.getElementById('heroCanvas');
+  if(hc){
+    const hctx=hc.getContext('2d');
+    let HW=0,HH=0,pts=[];
+    function sizeHero(){
+      const r=hc.parentElement.getBoundingClientRect(), dpr=Math.min(devicePixelRatio||1,2);
+      HW=r.width; HH=r.height;
+      hc.width=Math.round(HW*dpr); hc.height=Math.round(HH*dpr);
+      hctx.setTransform(dpr,0,0,dpr,0,0);
+      const n=Math.max(16,Math.min(42,Math.round(HW*HH/32000)));
+      pts=Array.from({length:n},()=>({
+        x:Math.random()*HW,y:Math.random()*HH,
+        vx:(Math.random()-.5)*.18,vy:(Math.random()-.5)*.18
+      }));
+    }
+    function stepHero(){
+      hctx.clearRect(0,0,HW,HH);
+      for(const p of pts){
+        p.x+=p.vx; p.y+=p.vy;
+        if(p.x<0||p.x>HW)p.vx*=-1;
+        if(p.y<0||p.y>HH)p.vy*=-1;
+      }
+      for(let i=0;i<pts.length;i++){
+        for(let j=i+1;j<pts.length;j++){
+          const a=pts[i],b=pts[j],dx=a.x-b.x,dy=a.y-b.y,d=Math.hypot(dx,dy);
+          if(d<150){
+            hctx.strokeStyle='rgba(124,108,246,'+((1-d/150)*0.22)+')';
+            hctx.lineWidth=1; hctx.beginPath(); hctx.moveTo(a.x,a.y); hctx.lineTo(b.x,b.y); hctx.stroke();
+          }
+        }
+      }
+      for(const p of pts){
+        hctx.beginPath(); hctx.arc(p.x,p.y,1.6,0,7);
+        hctx.fillStyle='rgba(148,163,255,.55)'; hctx.fill();
+      }
+      if(!reduceMotion) requestAnimationFrame(stepHero);
+    }
+    window.addEventListener('resize',sizeHero);
+    sizeHero();
+    if(reduceMotion){ stepHero(); } else { requestAnimationFrame(stepHero); }
+  }
+
+  /* nav bar shrink shadow once scrolled */
+  const topnav=document.getElementById('topnav');
+  function navShadow(){ topnav.style.boxShadow = window.scrollY>8 ? '0 8px 30px -14px rgba(0,0,0,.6)' : 'none'; }
+  window.addEventListener('scroll',navShadow,{passive:true}); navShadow();
+})();
+</script>
+</body>
+</html>
