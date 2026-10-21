@@ -10,6 +10,20 @@ verifies legitimate traffic recovers.
 
 Status: all 13 planned phases complete.
 
+## Live demo
+
+An interactive, browser-based replay of the real simulation output lives in
+[`index.html`](index.html) and is published via GitHub Pages:
+
+**https://amalrtms.github.io/SDN-DDOS-UsingNS3/**
+
+It animates the network topology and plays back the measured per-port packet
+rates, the controller's detection event, the installed DROP flow rule, and the
+recovery of legitimate traffic. Toggle **Controller mitigation** off to compare
+the attack-only run against the mitigated run. Every number is read from the
+committed `results/` data; rebuild it after new runs with
+`python3 scripts/analysis/build_dashboard.py`.
+
 ---
 
 ## 1. Project objective
