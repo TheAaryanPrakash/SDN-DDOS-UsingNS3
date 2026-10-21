@@ -1,5 +1,8 @@
 # SDN-Based DDoS Detection and Mitigation Using NS-3
 
+**[View the full project write-up / presentation page →](https://theaaryanprakash.github.io/SDN-DDOS-UsingNS3/)**
+(objective, architecture, detection/mitigation design, methodology, and all results with graphs, in one page)
+
 A final-year networking/security project. Simulates a Software-Defined
 Network in NS-3 (using the OFSwitch13 OpenFlow 1.3 module), generates
 legitimate client traffic plus a UDP flood from one or more attacker nodes,
