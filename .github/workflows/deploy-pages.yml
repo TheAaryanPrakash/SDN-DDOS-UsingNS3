@@ -1,6 +1,7 @@
-# Publishes the interactive demo (index.html) to GitHub Pages.
-# Uses the GitHub Actions deployment flow and enables Pages automatically on the
-# first run, so no manual Settings -> Pages toggle is needed.
+# Publishes the interactive demo + full write-up (index.html, plus the result
+# graphs it embeds) to GitHub Pages. Uses the GitHub Actions deployment flow
+# and enables Pages automatically on the first run, so no manual
+# Settings -> Pages toggle is needed.
 name: Deploy demo to GitHub Pages
 
 on:
@@ -27,10 +28,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Stage site (self-contained dashboard)
+      - name: Stage site (index.html + result graphs)
         run: |
           mkdir -p _site
           cp index.html _site/index.html
+          cp -r graphs _site/graphs
 
       - name: Configure Pages (enable if needed)
         uses: actions/configure-pages@v5
