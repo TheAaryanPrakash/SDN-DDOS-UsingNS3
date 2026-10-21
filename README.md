@@ -1,7 +1,6 @@
 # SDN-Based DDoS Detection and Mitigation Using NS-3
 
-**[View the full project write-up / presentation page →](https://theaaryanprakash.github.io/SDN-DDOS-UsingNS3/)**
-(objective, architecture, detection/mitigation design, methodology, and all results with graphs, in one page)
+**[View the live demo + full project write-up →](https://theaaryanprakash.github.io/SDN-DDOS-UsingNS3/)**
 
 A final-year networking/security project. Simulates a Software-Defined
 Network in NS-3 (using the OFSwitch13 OpenFlow 1.3 module), generates
@@ -12,6 +11,23 @@ real OpenFlow DROP flow rule from the controller to the switch -- then
 verifies legitimate traffic recovers.
 
 Status: all 13 planned phases complete.
+
+## Live demo
+
+[`index.html`](index.html) is a single self-contained page, published via
+GitHub Pages at the link above, with two parts:
+
+- **An interactive, animated replay** of the real simulation output: the
+  network topology, the measured per-port packet rates, the controller's
+  detection event, the installed DROP flow rule, and the recovery of
+  legitimate traffic. Toggle **Controller mitigation** off to compare the
+  attack-only run against the mitigated run.
+- **The full written report** below it (architecture, the complete
+  experiment matrix, all 11 results with graphs, real bugs found while
+  building this, and known limitations).
+
+Every number in the demo is read from the committed `results/` data; rebuild
+it after new runs with `python3 scripts/analysis/build_dashboard.py`.
 
 ---
 
