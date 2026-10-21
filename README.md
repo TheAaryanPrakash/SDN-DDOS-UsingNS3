@@ -14,17 +14,19 @@ Status: all 13 planned phases complete.
 
 ## Live demo
 
-[`index.html`](index.html) is a single self-contained page, published via
-GitHub Pages at the link above, with two parts:
+[`index.html`](index.html) (plus the figures in [`graphs/`](graphs)) is
+published via GitHub Pages at the link above, with two parts:
 
 - **An interactive, animated replay** of the real simulation output: the
   network topology, the measured per-port packet rates, the controller's
   detection event, the installed DROP flow rule, and the recovery of
   legitimate traffic. Toggle **Controller mitigation** off to compare the
   attack-only run against the mitigated run.
-- **The full written report** below it (architecture, the complete
+- **The full written report** below it: architecture, a code-level
+  walkthrough of how detection and mitigation actually work, the complete
   experiment matrix, all 11 results with graphs, real bugs found while
-  building this, and known limitations).
+  building this, known limitations, and the tech stack needed to reproduce
+  it.
 
 Every number in the demo is read from the committed `results/` data; rebuild
 it after new runs with `python3 scripts/analysis/build_dashboard.py`.
