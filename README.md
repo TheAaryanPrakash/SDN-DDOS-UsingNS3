@@ -1,4 +1,4 @@
-# SDN-Based DDoS Detection and Mitigation Using NS-3
+# Software-Defined Networking Based DDoS Detection and Mitigation Using NS-3
 
 **[View the live demo + full project write-up →](https://theaaryanprakash.github.io/SDN-DDOS-UsingNS3/)**
 
@@ -37,9 +37,12 @@ A second controller, `SdnControllerAdv`
 ([`src/controller/sdn-controller-adv.cc`](src/controller/sdn-controller-adv.cc)),
 and the `ddos-advanced` experiment
 ([`simulations/ddos-advanced`](simulations/ddos-advanced)) extend the project
-in response to review feedback. The topology adds **one shared switch port
-carrying both an attacker and an innocent client**, and the number of clients
-and attackers is **randomised per run** (`--run`):
+in response to review feedback. It has its own interactive live replay and
+write-up on the site above (the **Advanced v2** section) -- same real-data
+approach as the Phase 1-13 demo, just with a shared switch port, per-source
+detection, and two-stage mitigation. The topology adds **one shared switch
+port carrying both an attacker and an innocent client**, and the number of
+clients and attackers is **randomised per run** (`--run`):
 
 1. **Per-source detection** -- polls OpenFlow `flow-stats` and aggregates by
    `eth_src`, so each host is measured even when several share one port
@@ -58,8 +61,9 @@ and attackers is **randomised per run** (`--run`):
    after `MaxStrikes` the source is permanently `BLACKLISTED`.
 
 Run it with `./ns3 run "ddos-advanced --run=1"` (results in
-`results/adv-mitigated` and `results/adv-attack`). Rate-limiting with
-OpenFlow **meters** instead of an outright drop, plus the extra detection
+`results/adv-mitigated` and `results/adv-attack`), then rebuild the v2 replay
+dataset with `python3 scripts/analysis/build_dashboard_adv.py`. Rate-limiting
+with OpenFlow **meters** instead of an outright drop, plus the extra detection
 signals (source-distribution, SDN control-plane spikes, ML), are left as
 future scope. The original Phase 1-13 controller and its results are
 unchanged.

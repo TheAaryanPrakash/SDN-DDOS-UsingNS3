@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SDN DDoS Shield</title>
+<title>Software Defined Networking DDoS Shield</title>
 <meta name="description" content="A real OpenFlow 1.3 control pipeline simulated end-to-end in NS-3: legitimate traffic, a UDP flood, threshold-based detection, and automatic DROP-flow mitigation — with a live interactive replay of the real results.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -27,6 +27,7 @@
   --attacker:#fb7185;      /* reused by sim JS */
   --server:#eef1f8;        /* reused by sim JS */
   --switch:#22d3ee;        /* reused by sim JS */
+  --innocent:#38bdf8;      /* reused by v2 sim JS -- innocent host on a shared port */
   --ok:#34d399;            /* reused by sim JS */
   --warn:#f0b429;          /* reused by sim JS */
   --crit:#fb7185;          /* reused by sim JS */
@@ -300,6 +301,8 @@ button.dbtn.primary{background:var(--brand-grad);border-color:transparent;color:
 .topo-card .body{position:relative}
 #topo{display:block;width:100%;height:auto;aspect-ratio:16/12.2;max-width:100%}
 @media (max-width:860px){#topo{aspect-ratio:16/13.5}}
+#topoAdv{display:block;width:100%;height:auto;aspect-ratio:16/17;max-width:100%}
+@media (max-width:860px){#topoAdv{aspect-ratio:16/19}}
 .status-strip{display:flex;align-items:center;gap:11px;padding:11px 15px;border-top:1px solid var(--line);flex-wrap:wrap}
 .pill{display:inline-flex;align-items:center;gap:8px;font-size:11.5px;font-weight:700;padding:5px 10px;border-radius:999px;
   letter-spacing:.06em;text-transform:uppercase;border:1px solid;font-family:var(--font-mono)}
@@ -324,6 +327,7 @@ button.dbtn.primary{background:var(--brand-grad);border-color:transparent;color:
 
 /* chart */
 #chart{display:block;width:100%;height:auto;aspect-ratio:16/8;padding:10px 12px 4px}
+#chartAdv{display:block;width:100%;height:auto;aspect-ratio:16/8;padding:10px 12px 4px}
 .legend{display:flex;gap:16px;flex-wrap:wrap;padding:4px 15px 13px;font-size:11px;color:var(--muted);font-family:var(--font-mono)}
 .legend span{display:inline-flex;align-items:center;gap:7px}
 .legend i{width:14px;height:2px;display:inline-block}
@@ -370,6 +374,19 @@ button.dbtn.primary{background:var(--brand-grad);border-color:transparent;color:
 .ob.cur .obh::after{content:" \25c2 now";color:var(--faint);font-weight:400}
 .outcome .foot{font-size:10.5px;color:var(--faint);border-top:1px solid var(--line);padding-top:10px;line-height:1.6;font-family:var(--font-mono)}
 .outcome .foot b{color:var(--muted)}
+
+/* ---- v2 compare table (inside outcome-style card) ---- */
+.v2cmp{padding:8px 15px 14px}
+.v2cmp table{width:100%;border-collapse:collapse;font-family:var(--font-mono);font-size:11.5px}
+.v2cmp th,.v2cmp td{padding:8px 7px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+.v2cmp th:first-child,.v2cmp td:first-child{text-align:left;color:var(--muted);white-space:normal}
+.v2cmp thead th{color:var(--faint);font-weight:600;text-transform:uppercase;letter-spacing:.03em;font-size:9.5px}
+.v2cmp tbody tr:last-child td{border-bottom:none}
+.v2cmp tr.cur td{color:var(--fg);font-weight:700}
+.v2cmp tr.cur td:first-child{color:var(--ok)}
+.v2cmp tr.cur td:first-child::after{content:" \25c2 now"; color:var(--faint); font-weight:400}
+.v2cmp td.innocent-col{color:var(--innocent)}
+.v2cmp .foot{font-size:10.5px;color:var(--faint);border-top:1px solid var(--line);padding-top:10px;margin-top:2px;line-height:1.6}
 
 /* how-it-works mini steps (inside demo window) */
 .how-mini{margin-top:18px;padding-top:4px}
@@ -533,7 +550,7 @@ table.dtable tr.hl td{color:var(--ok);font-weight:700}
         <path d="M20 21.6 V27" stroke="url(#navgrad)" stroke-width="2.2" stroke-linecap="round"/>
         <defs><linearGradient id="navgrad" x1="0" y1="0" x2="40" y2="40"><stop stop-color="#7c6cf6"/><stop offset="1" stop-color="#38bdf8"/></linearGradient></defs>
       </svg>
-      <span>SDN DDoS Shield<span class="sub">ns-3.40 &middot; OFSwitch13</span></span>
+      <span>Software Defined Networking DDoS Shield<span class="sub">ns-3.40 &middot; OFSwitch13</span></span>
     </a>
     <ul class="nav-links" id="navLinks">
       <li><a href="#overview" data-nav>Overview</a></li>
@@ -541,6 +558,7 @@ table.dtable tr.hl td{color:var(--ok);font-weight:700}
       <li><a href="#architecture" data-nav>Architecture</a></li>
       <li><a href="#how" data-nav>How It Works</a></li>
       <li><a href="#results" data-nav>Results</a></li>
+      <li><a href="#v2advanced" data-nav>Advanced v2</a></li>
       <li><a href="#bugs" data-nav>Bugs &amp; Limits</a></li>
       <li><a href="#stack" data-nav>Reproduce</a></li>
     </ul>
@@ -729,17 +747,24 @@ table.dtable tr.hl td{color:var(--ok);font-weight:700}
     <div class="arch-diagram reveal-scale">
       <svg viewBox="0 0 760 300" width="100%" role="img" aria-label="Network topology diagram">
         <defs>
-          <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto-start-reverse">
             <path d="M0,0 L6,3 L0,6 Z" fill="currentColor"/>
           </marker>
           <linearGradient id="archgrad" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#7c6cf6"/><stop offset="1" stop-color="#38bdf8"/></linearGradient>
         </defs>
         <g fill="none" stroke="currentColor" stroke-width="1.4" color="#4b5468">
+          <!-- controller <-> switch: OpenFlow control channel is genuinely two-way
+               (flow-mods down, packet-in/stats-replies up), so this stays bidirectional. -->
           <line x1="380" y1="78"  x2="380" y2="122" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
-          <line x1="380" y1="150" x2="150" y2="198" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
-          <line x1="380" y1="150" x2="300" y2="198" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
-          <line x1="380" y1="150" x2="460" y2="198" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
-          <line x1="380" y1="150" x2="620" y2="198" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+          <!-- host -> switch: every client/attacker only ever SENDS UDP traffic in this
+               simulation (no return traffic), so the arrowhead points at the switch only.
+               Anchored to the switch box's bottom EDGE (y=172), not its center (y=150) --
+               a marker at the center would land inside the box and be hidden behind it. -->
+          <line x1="380" y1="172" x2="150" y2="198" marker-start="url(#arrow)"/>
+          <line x1="380" y1="172" x2="300" y2="198" marker-start="url(#arrow)"/>
+          <line x1="380" y1="172" x2="460" y2="198" marker-start="url(#arrow)"/>
+          <line x1="380" y1="172" x2="620" y2="198" marker-start="url(#arrow)"/>
+          <!-- switch -> server: traffic continues on to the victim, one-way. -->
           <line x1="380" y1="150" x2="380" y2="250" marker-end="url(#arrow)"/>
         </g>
         <g font-family="Inter,sans-serif">
@@ -953,11 +978,252 @@ table.dtable tr.hl td{color:var(--ok);font-weight:700}
   </div>
 </section>
 
+<!-- ================= ADVANCED CONTROLLER (V2) ================= -->
+<section class="section" id="v2advanced">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="eyebrow">04 &middot; Extension &middot; review feedback</div>
+      <h2>v2: per-source detection &amp; surgical mitigation</h2>
+      <p>The original controller worked, but bluntly: it blocked a <em>whole switch port</em>, which also cut off any innocent host sharing that port with an attacker. A second controller, <code style="font-family:var(--font-mono);background:var(--inset);padding:1px 6px;border-radius:5px;border:1px solid var(--line)">SdnControllerAdv</code>, fixes that &mdash; nothing from Phase 1&ndash;13 above was removed or changed to build it.</p>
+    </div>
+
+    <div class="info-callout reveal" style="margin-bottom:40px">
+      Think of the controller as a security guard at a door. <b>v1 locked the whole door</b> the moment it saw trouble. <b>v2 checks IDs</b>: it lets good traffic through and stops only the one troublemaker &mdash; even when the troublemaker shares a door with someone innocent.
+    </div>
+
+    <div class="arch-grid reveal-scale" style="margin-bottom:48px">
+      <div class="glass-card feature-card" style="--d:0">
+        <div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="9" r="3"/><circle cx="17" cy="15" r="3"/><path d="M4 20c0-2.8 2.2-5 5-5M12 20c0-2.8 2.2-5 5-5" stroke-linecap="round"/></svg></div>
+        <h4>1 &middot; Per-source, not per-port</h4>
+        <p>v1 measured traffic per switch port; two hosts sharing a port were indistinguishable. v2 polls OpenFlow <code>flow-stats</code> and aggregates by <code>eth_src</code>, so it can single out exactly which host is flooding even on a shared line.</p>
+      </div>
+      <div class="glass-card feature-card" style="--d:1">
+        <div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/><path d="M11 7.5h6M7.5 11v6" stroke-linecap="round"/></svg></div>
+        <h4>2 &middot; Two clues, not one</h4>
+        <p>A flood isn't just <em>lots</em> of packets &mdash; it's lots of <em>tiny</em> packets. v2 only raises the alarm when the rate is high <strong>and</strong> the average packet size is suspiciously small (attacker &asymp;110 bytes vs. real traffic &asymp;558 bytes).</p>
+      </div>
+      <div class="glass-card feature-card" style="--d:2">
+        <div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 17l5-5 4 4 8-9" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 7h7v7" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <h4>3 &middot; A learned baseline, not a guess</h4>
+        <p>There is no universal "X pkt/s = DDoS" standard &mdash; v1's fixed 1000 pkt/s was arbitrary. v2 watches the first few quiet seconds, learns the real normal rate (&asymp;123 pkt/s here), and sets the alarm <em>relative to that</em> (&asymp;615 pkt/s) &mdash; how production anomaly detectors actually work.</p>
+      </div>
+      <div class="glass-card feature-card" style="--d:3">
+        <div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l8 4v5c0 5-3.5 7.5-8 9-4.5-1.5-8-4-8-9V7z" stroke-linejoin="round"/><path d="M9.5 12l1.8 1.8L15 10" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <h4>4 &middot; Two-stage, surgical mitigation</h4>
+        <p>On detection the controller first drops the whole <code>in_port</code> (fast but crude), then &asymp;0.5s later swaps it for a precise <code>ip_src</code> DROP and reopens the port &mdash; so an innocent host sharing that port comes right back online.</p>
+      </div>
+      <div class="glass-card feature-card" style="--d:4">
+        <div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg></div>
+        <h4>5 &middot; Repeat offenders get punished</h4>
+        <p>First offense: 5s isolation. Offend again: 20s. A third time: permanently <code>BLACKLISTED</code>. v1 let a paused attacker straight back in the instant its rate dropped &mdash; v2 remembers.</p>
+      </div>
+      <div class="glass-card feature-card" style="--d:5">
+        <div class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="6" cy="6" r="2.4"/><circle cx="18" cy="6" r="2.4"/><circle cx="6" cy="18" r="2.4"/><circle cx="18" cy="18" r="2.4"/><circle cx="12" cy="12" r="2.8" fill="currentColor"/></svg></div>
+        <h4>6 &middot; A 2nd signal beyond any single source's rate</h4>
+        <p>Flow rate alone misses an attacker who splits a flood across <em>many</em> devices, each individually under the threshold &mdash; the real-world case behind Microsoft's 3.47&nbsp;Tbps / &asymp;10,000-source Azure attack in Nov&nbsp;2021. Every poll now also compares the <strong>aggregate</strong> rate across all sources to a learned aggregate baseline; if it's anomalously high <em>and</em> entropy stays high (many roughly-equal contributors, not one dominant flood), a time-limited <code>DISTRIBUTED_ALERT</code> temporarily tightens every source's own threshold, so each contributing device trips the existing per-source detector on the next poll.</p>
+      </div>
+    </div>
+
+    <div class="result-stats reveal-scale" style="margin-bottom:12px">
+      <div class="glass-card rstat good"><div class="v">83.5%</div><div class="c">Normal client delivery, v2</div></div>
+      <div class="glass-card rstat good"><div class="v">83.4%</div><div class="c">Innocent-on-shared-port delivery, v2</div></div>
+      <div class="glass-card rstat good"><div class="v">2.0%</div><div class="c">Attacker traffic reaching server, v2</div></div>
+      <div class="glass-card rstat"><div class="v">~0.5s</div><div class="c">Coarse &rarr; surgical mitigation handoff</div></div>
+    </div>
+
+    <div class="table-wrap reveal">
+      <table class="dtable">
+        <thead><tr><th>Scenario</th><th class="num">Normal clients</th><th class="num">Innocent, shared port</th><th class="num">Attackers reaching server</th></tr></thead>
+        <tbody>
+          <tr><td>No protection (detection logging only, no block)</td><td class="num">30.0%</td><td class="num">32.4%</td><td class="num">8.4%</td></tr>
+          <tr class="hl"><td>v2 controller (detect + two-stage mitigate + penalize)</td><td class="num">83.5%</td><td class="num">83.4%</td><td class="num">2.0%</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="font-size:12.5px;color:var(--text-faint);margin:-10px 0 44px">From the real <code style="font-family:var(--font-mono);background:var(--inset);padding:1px 6px;border-radius:5px;border:1px solid var(--line)">results/adv-attack</code> / <code style="font-family:var(--font-mono);background:var(--inset);padding:1px 6px;border-radius:5px;border:1px solid var(--line)">results/adv-mitigated</code> FlowMonitor data &mdash; the headline number is the middle column: the innocent host shares a switch port with an attacker and still gets normal-client delivery.</p>
+
+    <div class="window reveal-scale">
+      <div class="window-bar">
+        <span class="wdot r"></span><span class="wdot y"></span><span class="wdot g"></span>
+        <span class="window-title">live-replay-adv.sdn &mdash; ns-3.40 &middot; OFSwitch13 &middot; SdnControllerAdv</span>
+        <span class="window-live"><span class="live-dot"></span>Live replay</span>
+      </div>
+      <div class="window-body">
+
+        <div class="controls">
+          <button id="playAdv" class="dbtn primary" aria-label="Play or pause">&#9654; Play</button>
+          <button id="restartAdv" class="dbtn" aria-label="Restart">&#8635; Restart</button>
+          <div class="seg" role="group" aria-label="Playback speed">
+            <button data-spdadv="1" aria-pressed="false">1&times;</button>
+            <button data-spdadv="2" aria-pressed="false">2&times;</button>
+            <button data-spdadv="4" aria-pressed="true">4&times;</button>
+          </div>
+          <span class="spc"></span>
+          <button id="mitAdv" class="toggle" aria-pressed="true" aria-label="Toggle controller mitigation">
+            <span class="sw"></span><span class="lab">Controller mitigation</span>
+          </button>
+        </div>
+
+        <div class="timeline">
+          <div class="tl-row">
+            <div class="tl-clock"><span id="clockAdv">0.00</span><small> s / 44 s sim</small></div>
+            <div class="track" id="trackAdv" role="slider" aria-label="Simulation time" aria-valuemin="0" aria-valuemax="44" aria-valuenow="0" tabindex="0">
+              <div class="rail"><div class="fill" id="fillAdv"></div></div>
+              <div class="mk" style="left:22.7%;background:var(--warn)"><span style="color:var(--warn)">flood starts 10s</span></div>
+              <div class="mk" id="detmkAdv" style="left:25%;background:var(--crit)"><span style="color:var(--crit)">1st detect 11.0s</span></div>
+              <div class="head" id="theadAdv" style="left:0%"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid">
+          <div class="card topo-card">
+            <div class="ch"><h3>Network topology &middot; shared port 9</h3><span class="badge" id="topobadgeAdv">data plane</span></div>
+            <div class="body"><canvas id="topoAdv" aria-label="Animated network topology with a shared switch port"></canvas></div>
+            <div class="status-strip">
+              <span class="pill ok" id="statusAdv"><span class="pdot"></span><span id="statustextAdv">Normal</span></span>
+              <span class="phase-note" id="phaseAdv">5 clients, 1 innocent host and 3 attackers streaming UDP; the innocent shares port 9 with one attacker.</span>
+            </div>
+          </div>
+
+          <div class="col">
+            <div class="tiles">
+              <div class="tile" id="tile-atkAdv"><div class="k">Peak attacker rate</div><div class="v"><span id="m-atkAdv">0</span> <span class="u">pps</span></div></div>
+              <div class="tile"><div class="k">Adaptive threshold</div><div class="v"><span id="m-thrAdv">&mdash;</span> <span class="u">pps</span></div></div>
+              <div class="tile"><div class="k">Source entropy</div><div class="v"><span id="m-entAdv">&mdash;</span> <span class="u">bits</span></div></div>
+              <div class="tile"><div class="k">Innocent delivery (est.)</div><div class="v"><span id="m-delivAdv">100</span><span class="u">%</span></div></div>
+            </div>
+
+            <div class="card">
+              <div class="ch"><h3>Per-source packet rate</h3><span class="badge">flow-stats &middot; by eth_src &middot; log scale</span></div>
+              <canvas id="chartAdv" aria-label="Packet rate over time chart, per source"></canvas>
+              <div class="legend">
+                <span><i style="background:var(--client)"></i>5 clients</span>
+                <span><i style="background:var(--innocent)"></i>innocent (shared port)</span>
+                <span><i style="background:var(--attacker)"></i>3 attackers</span>
+                <span><i style="background:var(--warn)"></i>adaptive threshold</span>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="ch"><h3>Switch flow table</h3><span class="badge" id="flowbadgeAdv">6 rules</span></div>
+              <div class="flows" id="flowsAdv"></div>
+            </div>
+
+            <div class="card">
+              <div class="ch"><h3>Controller log</h3><span class="badge">dpctl / detections.csv</span></div>
+              <div class="log" id="logAdv"></div>
+            </div>
+
+            <div class="card">
+              <div class="ch"><h3>Outcome &middot; ns-3 FlowMonitor</h3><span class="badge">whole-run delivery, by role</span></div>
+              <div class="v2cmp">
+                <table>
+                  <thead><tr><th>Scenario</th><th>Clients</th><th>Innocent</th><th>Attackers</th></tr></thead>
+                  <tbody>
+                    <tr id="row-noprotectAdv"><td>No protection</td><td>30.0%</td><td class="innocent-col">32.4%</td><td>8.4%</td></tr>
+                    <tr id="row-v2Adv" class="cur"><td>v2 controller</td><td>83.5%</td><td class="innocent-col">83.4%</td><td>2.0%</td></tr>
+                  </tbody>
+                </table>
+                <div class="foot">The innocent host (port 9, shares with an attacker) keeps the <b>same delivery as a dedicated client</b> once the controller is on &mdash; the entire point of the two-stage, per-IP mitigation.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="how-mini">
+          <div class="card">
+            <h3>How the advanced controller stops the flood</h3>
+            <div class="mini-steps">
+              <div class="mstep"><b>Learn a baseline.</b> The first ~7s of quiet traffic set the normal per-source rate (&asymp;123 pps); the alarm threshold is set relative to it, not hard-coded.</div>
+              <div class="mstep"><b>Poll by source.</b> Every 1s, <code>flow-stats</code> are summed by <code>eth_src</code> &mdash; so port 9's two hosts are measured separately even though they share a line.</div>
+              <div class="mstep"><b>Detect on two signals.</b> A source trips the alarm only when its rate beats the adaptive threshold <em>and</em> its packets are small &mdash; port 9's attacker hits &asymp;39,062 pps at &asymp;110 bytes/pkt and trips at t&asymp;11.0s, port 9's innocent host does not.</div>
+              <div class="mstep"><b>Mitigate, then isolate, then penalize.</b> <code>prio 200 in_port=9 &rarr; DROP</code> goes in immediately; &asymp;0.5s later it's replaced by <code>prio 210 ip_src=10.1.1.9 &rarr; DROP</code> and the port reopens &mdash; the innocent host on port 9 is back online within half a second, while the attacker's own block gets 5s &rarr; 20s &rarr; permanent across repeat offenses.</div>
+            </div>
+          </div>
+        </div>
+
+        <p class="demo-foot">
+          Regenerate this dataset from a fresh run with <code>python3 scripts/analysis/build_dashboard_adv.py</code>, after
+          <code>./ns3 run "ddos-advanced --run=1"</code>. Same as above: the moving packets visualize the measured flows, not a packet-by-packet trace.
+        </p>
+      </div>
+    </div>
+
+    <div class="section-head reveal" style="margin-top:64px">
+      <div class="eyebrow">Theory</div>
+      <h2>Other ways to detect a DDoS &mdash; and which v2 uses</h2>
+      <p>Real detectors rarely rely on one signal; they combine several. v2 moved from a single rate check (v1) toward combining rate, packet size, and an adaptive baseline &mdash; the direction the field actually goes.</p>
+    </div>
+    <div class="table-wrap reveal">
+      <table class="dtable">
+        <thead><tr><th>Method</th><th>What it looks for</th><th>Trade-off</th><th>In v2?</th></tr></thead>
+        <tbody>
+          <tr class="hl"><td>Rate / volume threshold</td><td>Too many packets/bits/flows per second</td><td>Simple; false-alarms on legit busy periods</td><td>Yes</td></tr>
+          <tr class="hl"><td>Packet-size / payload</td><td>Floods use many tiny, uniform packets</td><td>Cheap; attackers can pad packets to evade</td><td>Yes</td></tr>
+          <tr><td>Entropy (statistical)</td><td>Randomness of source/destination IPs &amp; ports; a flood collapses entropy</td><td>Strong, standard in SDN research; needs a window</td><td>Logged only</td></tr>
+          <tr class="hl"><td>Adaptive baseline / anomaly</td><td>Deviation from the learned normal (moving average, EWMA, std-dev bands)</td><td>Adapts per network; needs a clean learning period</td><td>Yes</td></tr>
+          <tr><td>Flow-based features</td><td>Many new/short-lived flows, few packets-per-flow, high flows-per-source</td><td>Good for distributed attacks; more state to track</td><td>&mdash;</td></tr>
+          <tr><td>Source distribution / asymmetry</td><td>Many sources &rarr; one victim; lots of traffic in, little out</td><td>Catches reflection/amplification; needs topology view</td><td>&mdash;</td></tr>
+          <tr><td>Protocol / connection behavior</td><td>SYN-without-ACK ratio, half-open TCP, odd UDP/ICMP ratios</td><td>Great for SYN floods; protocol-specific</td><td>&mdash;</td></tr>
+          <tr><td>SDN control-plane signals</td><td>Spike in packet-in / table-miss rate / flow-table growth</td><td>SDN-specific and powerful; easy future add-on here</td><td>&mdash;</td></tr>
+          <tr><td>Signature-based (IDS)</td><td>Matches known attack fingerprints (Snort-style rules)</td><td>Accurate for known attacks; blind to new ones</td><td>&mdash;</td></tr>
+          <tr><td>Change-point / time-series</td><td>Sudden statistical shifts over time (CUSUM, wavelets)</td><td>Catches abrupt onset; tuning-sensitive</td><td>&mdash;</td></tr>
+          <tr><td>Machine learning</td><td>Trained classifier (decision tree, SVM, k-NN, random forest, or unsupervised k-means / isolation forest / autoencoder)</td><td>Most powerful and flexible; needs training data, heavier</td><td>Deliberately avoided &mdash; project brief</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="info-callout reveal" style="margin-top:24px">
+      There is no official international standard pps value for a DDoS &mdash; the "right" threshold depends entirely on a network's own normal load. The professional approach is baseline-relative / anomaly detection (or ML), not a fixed constant, which is exactly the direction v2 moved in. <b>Documented, not built:</b> rate-limiting with OpenFlow <em>meters</em> instead of an outright drop, plus the remaining signals above (source-distribution, SDN control-plane spikes, a simple ML classifier over the features already logged).
+    </div>
+
+    <div class="section-head reveal" style="margin-top:64px">
+      <div class="eyebrow">Evidence</div>
+      <h2>Is there research behind the threshold number?</h2>
+      <p>Yes &mdash; and every source below reaches the same conclusion v2 is built on: nobody publishes a universal packets/sec constant, because the published work all detects relative to a <em>learned</em> normal (a moving baseline, a standard-deviation band, or entropy), not a fixed number.</p>
+    </div>
+    <div class="table-wrap reveal">
+      <table class="dtable">
+        <thead><tr><th>Source</th><th>What it does</th><th>How it relates to v2</th></tr></thead>
+        <tbody>
+          <tr><td><a href="https://repository.telkomuniversity.ac.id/pustaka/122971/improving-ddos-detection-using-entropy-in-sdn.html" target="_blank" rel="noopener">Dwi Ary W., <i>Improving DDoS Detection using Entropy in SDN</i>, Telkom University, 2016</a></td><td>The classic SDN baseline method: flags traffic above <b>mean + 3 standard deviations</b> of normal volume, with an entropy check added to cut false positives from legitimate bursts.</td><td>Same shape as v2's <code>BaselineMultiplier &times; baseline</code> threshold &mdash; a statistical deviation from a learned normal, not a constant.</td></tr>
+          <tr><td><a href="https://archive.cps-vo.org/node/68623" target="_blank" rel="noopener">Entropy Based DDoS Detection and Mitigation in OpenFlow Enabled SDN</a></td><td>Detects a flood as a collapse in source/destination entropy, then mitigates directly through OpenFlow flow-mods.</td><td>Confirms entropy as a standard secondary SDN signal &mdash; which is exactly why v2 already logs <code>SourceEntropy</code> per poll (see the chart above).</td></tr>
+          <tr><td><a href="https://doaj.org/article/12c955ef49c94722935a52d727e857c5" target="_blank" rel="noopener">R&eacute;nyi joint-entropy dynamic threshold, <i>Applied Sciences</i>, 2022</a></td><td>Targets SDN control-plane DDoS at both low- and high-rate attack levels using a <b>dynamic</b>, not fixed, threshold.</td><td>Backs the "no single pps number works across attack intensities" point this section already makes.</td></tr>
+          <tr><td><a href="https://arxiv.org/pdf/2608.15642" target="_blank" rel="noopener">When Time Meets Space: Entropy Integration and Dynamic Threshold for Adaptive DDoS Detection in SDN</a> (preprint)</td><td>Combines spatial + temporal entropy with a second-order EWMA threshold; reports 99.26% recall / 3.2% false-positive rate on a testbed.</td><td>Shows that <em>combining signals</em> with an adaptive threshold (what v2 does: rate + packet size + baseline) measurably beats a single fixed signal.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="info-callout reveal" style="margin-top:20px">
+      The escalating-block-then-blacklist pattern in <b>Penalties</b> above also mirrors a well-established methodology outside academic SDN research: <a href="https://github.com/fail2ban/fail2ban" target="_blank" rel="noopener">fail2ban</a>'s <code>bantime.increment</code> lengthens a repeat offender's ban (often geometrically, capped at a maximum), and its <code>recidive</code> jail permanently bans IPs that keep coming back &mdash; the same 5s &rarr; 20s &rarr; permanent <code>BLACKLISTED</code> shape <code>SdnControllerAdv</code> implements. In both systems, unblocking is strictly <b>time-based</b> (a hold-down timer); it is never triggered just because the offending traffic's rate happens to drop, which is exactly what review feedback asked this project to check.
+    </div>
+
+    <div class="section-head reveal" style="margin-top:64px">
+      <div class="eyebrow">Scale</div>
+      <h2>Where this sits next to a real attack</h2>
+      <p>This project's attack (&asymp;39,000 pps / &asymp;20&nbsp;Mbps per attacker, on a lab topology) is intentionally small enough to run in ns-3 and to reason about by hand. Real recorded attacks are several orders of magnitude larger &mdash; the table below keeps that honest.</p>
+    </div>
+    <div class="table-wrap reveal">
+      <table class="dtable">
+        <thead><tr><th>Source</th><th class="num">Scale</th><th>Technique used</th></tr></thead>
+        <tbody>
+          <tr class="hl"><td>This project (<code>ddos-advanced</code>)</td><td class="num">&asymp;39,062 pps / attacker</td><td>Per-source rate + packet-size + adaptive baseline, two-stage port&rarr;IP block</td></tr>
+          <tr><td><a href="https://azure.microsoft.com/en-us/blog/azure-ddos-protection-2021-q3-and-q4-ddos-attack-trends/" target="_blank" rel="noopener">Microsoft Azure, Nov 2021</a></td><td class="num">3.47 Tbps / 340M pps</td><td>From &asymp;10,000 distinct source IPs across 10+ countries &mdash; no single source's rate was remarkable</td></tr>
+          <tr><td><a href="https://www.bleepingcomputer.com/news/security/cloudflare-blocks-record-breaking-115-tbps-ddos-attack/" target="_blank" rel="noopener">Cloudflare, Aug 2025</a></td><td class="num">11.5 Tbps</td><td>Automated hyper-volumetric UDP-flood auto-mitigation at the network edge</td></tr>
+          <tr><td><a href="https://www.cloudflare.com/learning/ddos/famous-ddos-attacks/" target="_blank" rel="noopener">Google / Cloudflare, Oct 2023</a></td><td class="num">398M / 201M req/s</td><td>HTTP/2 "Rapid Reset" &mdash; application-layer rate limiting, not just packet rate</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="info-callout reveal" style="margin-top:20px">
+      The idea under test here &mdash; measure a per-source rate against a learned-normal baseline, and escalate the response for repeat offenders &mdash; is the same idea production DDoS defenses use, just at a scale where a single attacker is rarely the whole story. The <b>Azure row above is exactly the case per-source detection alone cannot catch</b>: &asymp;10,000 sources, each individually unremarkable, overwhelming the victim together. That gap is exactly what improvement <b>6 &middot; a 2nd signal beyond any single source's rate</b> (above) is for: a per-source rate check alone never catches it, which is why an aggregate-rate check now backs it up.
+    </div>
+  </div>
+</section>
+
 <!-- ================= BUGS & LIMITATIONS ================= -->
 <section class="section" id="bugs">
   <div class="container">
     <div class="section-head reveal">
-      <div class="eyebrow">04 &middot; Honesty</div>
+      <div class="eyebrow">05 &middot; Honesty</div>
       <h2>Bugs found &amp; known limitations</h2>
       <p>Two real correctness bugs were found while building traffic monitoring &mdash; both confirmed with actual packet captures before being called "fixed," not assumed.</p>
     </div>
@@ -998,7 +1264,7 @@ table.dtable tr.hl td{color:var(--ok);font-weight:700}
 <section class="section" id="stack">
   <div class="container">
     <div class="section-head reveal">
-      <div class="eyebrow">05 &middot; Reproduce it</div>
+      <div class="eyebrow">06 &middot; Reproduce it</div>
       <h2>Tech stack &amp; reproducing it</h2>
       <p>Everything here was built and measured on this exact stack. Once ns-3 and OFSwitch13 are built, this project's own code is driven by one script.</p>
     </div>
@@ -1042,7 +1308,9 @@ bash run-all.sh   <span class="c-str"># build -&gt; run every experiment -&gt; g
         </li>
         <li>
           <h5>Regenerate this page's data</h5>
-          <div class="code-block" style="margin:8px 0 0"><pre>python3 scripts/analysis/build_dashboard.py</pre></div>
+          <div class="code-block" style="margin:8px 0 0"><pre>python3 scripts/analysis/build_dashboard.py      <span class="c-str"># v1 replay</span>
+python3 scripts/analysis/build_dashboard_adv.py  <span class="c-str"># v2 replay, after</span>
+                                                  <span class="c-str"># ./ns3 run "ddos-advanced --run=1"</span></pre></div>
         </li>
       </ol>
     </div>
@@ -1066,9 +1334,9 @@ bash run-all.sh   <span class="c-str"># build -&gt; run every experiment -&gt; g
         <path d="M20 21.6 V27" stroke="url(#fgrad)" stroke-width="2.2" stroke-linecap="round"/>
         <defs><linearGradient id="fgrad" x1="0" y1="0" x2="40" y2="40"><stop stop-color="#7c6cf6"/><stop offset="1" stop-color="#38bdf8"/></linearGradient></defs>
       </svg>
-      SDN DDoS Shield
+      Software Defined Networking DDoS Shield
     </div>
-    <p>SDN-Based DDoS Detection and Mitigation Using NS-3 &mdash; a final-year Network Programming project, built with <a href="https://github.com/amalrtms" style="color:var(--brand-2)">amalrtms</a>.</p>
+    <p>Software-Defined Networking Based DDoS Detection and Mitigation Using NS-3 &mdash; a final-year Network Programming project, built with <a href="https://github.com/amalrtms" style="color:var(--brand-2)">amalrtms</a>.</p>
     <div class="flinks">
       <a href="https://github.com/TheAaryanPrakash/SDN-DDOS-UsingNS3">Source on GitHub</a>
       <a href="#overview">Back to top</a>
@@ -1450,6 +1718,425 @@ const demoIO=new IntersectionObserver((entries)=>{
 },{threshold:.3});
 demoIO.observe(document.getElementById('demo'));
 requestAnimationFrame(frame);
+</script>
+
+<script>
+/* ===== real ns-3 data (embedded) -- advanced controller v2 ===== */
+const DATA_ADV = {"meta":{"simTime":44,"server":"10.1.1.8"},"attack":{"sources":[{"mac":"00:00:00:00:00:01","ip":"10.1.1.1","port":1,"role":"client","shared":false,"rate":{"0":0,"1":0,"2":0,"3":122,"4":123,"5":122,"6":122,"7":122,"8":122,"9":122,"10":122,"11":122,"12":122,"13":122,"14":122,"15":122,"16":122,"17":122,"18":123,"19":122,"20":122,"21":122,"22":122,"23":122,"24":122,"25":122,"26":122,"27":122,"28":122,"29":122,"30":122,"31":122,"32":123,"33":122,"34":122,"35":122,"36":122,"37":122,"38":122,"39":122,"40":122,"41":122,"42":122,"43":122,"44":122},"state":{"0":"NORMAL","1":"NORMAL","2":"NORMAL","3":"NORMAL","4":"NORMAL","5":"NORMAL","6":"NORMAL","7":"NORMAL","8":"NORMAL","9":"NORMAL","10":"NORMAL","11":"NORMAL","12":"NORMAL","13":"NORMAL","14":"NORMAL","15":"NORMAL","16":"NORMAL","17":"NORMAL","18":"NORMAL","19":"NORMAL","20":"NORMAL","21":"NORMAL","22":"NORMAL","23":"NORMAL","24":"NORMAL","25":"NORMAL","26":"NORMAL","27":"NORMAL","28":"NORMAL","29":"NORMAL","30":"NORMAL","31":"NORMAL","32":"NORMAL","33":"NORMAL","34":"NORMAL","35":"NORMAL","36":"NORMAL","37":"NORMAL","38":"NORMAL","39":"NORMAL","40":"NORMAL","41":"NORMAL","42":"NORMAL","43":"NORMAL","44":"NORMAL"},"deliv":31.4},{"mac":"00:00:00:00:00:03","ip":"10.1.1.2","port":2,"role":"client","shared":false,"rate":{"0":0,"1":0,"2":0,"3":122,"4":122,"5":122,"6":122,"7":123,"8":122,"9":122,"10":122,"11":122,"12":122,"13":122,"14":122,"15":122,"16":122,"17":122,"18":122,"19":122,"20":122,"21":123,"22":122,"23":122,"24":122,"25":122,"26":122,"27":122,"28":122,"29":122,"30":122,"31":122,"32":122,"33":122,"34":122,"35":123,"36":122,"37":122,"38":122,"39":122,"40":122,"41":122,"42":122,"43":122,"44":121},"state":{"0":"NORMAL","1":"NORMAL","2":"NORMAL","3":"NORMAL","4":"NORMAL","5":"NORMAL","6":"NORMAL","7":"NORMAL","8":"NORMAL","9":"NORMAL","10":"NORMAL","11":"NORMAL","12":"NORMAL","13":"NORMAL","14":"NORMAL","15":"NORMAL","16":"NORMAL","17":"NORMAL","18":"NORMAL","19":"NORMAL","20":"NORMAL","21":"NORMAL","22":"NORMAL","23":"NORMAL","24":"NORMAL","25":"NORMAL","26":"NORMAL","27":"NORMAL","28":"NORMAL","29":"NORMAL","30":"NORMAL","31":"NORMAL","32":"NORMAL","33":"NORMAL","34":"NORMAL","35":"NORMAL","36":"NORMAL","37":"NORMAL","38":"NORMAL","39":"NORMAL","40":"NORMAL","41":"NORMAL","42":"NORMAL","43":"NORMAL","44":"NORMAL"},"deliv":28.1},{"mac":"00:00:00:00:00:05","ip":"10.1.1.3","port":3,"role":"client","shared":false,"rate":{"0":0,"1":0,"2":0,"3":122,"4":122,"5":122,"6":122,"7":122,"8":122,"9":122,"10":123,"11":122,"12":122,"13":122,"14":122,"15":122,"16":122,"17":122,"18":122,"19":122,"20":122,"21":122,"22":122,"23":122,"24":123,"25":122,"26":122,"27":122,"28":122,"29":122,"30":122,"31":122,"32":122,"33":122,"34":122,"35":122,"36":122,"37":122,"38":123,"39":122,"40":122,"41":122,"42":122,"43":122,"44":121},"state":{"0":"NORMAL","1":"NORMAL","2":"NORMAL","3":"NORMAL","4":"NORMAL","5":"NORMAL","6":"NORMAL","7":"NORMAL","8":"NORMAL","9":"NORMAL","10":"NORMAL","11":"NORMAL","12":"NORMAL","13":"NORMAL","14":"NORMAL","15":"NORMAL","16":"NORMAL","17":"NORMAL","18":"NORMAL","19":"NORMAL","20":"NORMAL","21":"NORMAL","22":"NORMAL","23":"NORMAL","24":"NORMAL","25":"NORMAL","26":"NORMAL","27":"NORMAL","28":"NORMAL","29":"NORMAL","30":"NORMAL","31":"NORMAL","32":"NORMAL","33":"NORMAL","34":"NORMAL","35":"NORMAL","36":"NORMAL","37":"NORMAL","38":"NORMAL","39":"NORMAL","40":"NORMAL","41":"NORMAL","42":"NORMAL","43":"NORMAL","44":"NORMAL"},"deliv":30.5},{"mac":"00:00:00:00:00:07","ip":"10.1.1.4","port":4,"role":"client","shared":false,"rate":{"0":0,"1":0,"2":0,"3":122,"4":122,"5":122,"6":122,"7":122,"8":122,"9":122,"10":122,"11":122,"12":122,"13":123,"14":122,"15":122,"16":122,"17":122,"18":122,"19":122,"20":122,"21":122,"22":122,"23":122,"24":122,"25":122,"26":122,"27":123,"28":122,"29":122,"30":122,"31":122,"32":122,"33":122,"34":122,"35":122,"36":122,"37":122,"38":122,"39":122,"40":122,"41":123,"42":122,"43":122,"44":121},"state":{"0":"NORMAL","1":"NORMAL","2":"NORMAL","3":"NORMAL","4":"NORMAL","5":"NORMAL","6":"NORMAL","7":"NORMAL","8":"NORMAL","9":"NORMAL","10":"NORMAL","11":"NORMAL","12":"NORMAL","13":"NORMAL","14":"NORMAL","15":"NORMAL","16":"NORMAL","17":"NORMAL","18":"NORMAL","19":"NORMAL","20":"NORMAL","21":"NORMAL","22":"NORMAL","23":"NORMAL","24":"NORMAL","25":"NORMAL","26":"NORMAL","27":"NORMAL","28":"NORMAL","29":"NORMAL","30":"NORMAL","31":"NORMAL","32":"NORMAL","33":"NORMAL","34":"NORMAL","35":"NORMAL","36":"NORMAL","37":"NORMAL","38":"NORMAL","39":"NORMAL","40":"NORMAL","41":"NORMAL","42":"NORMAL","43":"NORMAL","44":"NORMAL"},"deliv":29.3},{"mac":"00:00:00:00:00:09","ip":"10.1.1.5","port":5,"role":"client","shared":false,"rate":{"0":0,"1":0,"2":0,"3":122,"4":122,"5":122,"6":122,"7":122,"8":122,"9":122,"10":122,"11":122,"12":122,"13":122,"14":122,"15":122,"16":123,"17":122,"18":122,"19":122,"20":122,"21":122,"22":122,"23":122,"24":122,"25":122,"26":122,"27":122,"28":122,"29":122,"30":123,"31":122,"32":122,"33":122,"34":122,"35":122,"36":122,"37":122,"38":122,"39":122,"40":122,"41":122,"42":122,"43":122,"44":122},"state":{"0":"NORMAL","1":"NORMAL","2":"NORMAL","3":"NORMAL","4":"NORMAL","5":"NORMAL","6":"NORMAL","7":"NORMAL","8":"NORMAL","9":"NORMAL","10":"NORMAL","11":"NORMAL","12":"NORMAL","13":"NORMAL","14":"NORMAL","15":"NORMAL","16":"NORMAL","17":"NORMAL","18":"NORMAL","19":"NORMAL","20":"NORMAL","21":"NORMAL","22":"NORMAL","23":"NORMAL","24":"NORMAL","25":"NORMAL","26":"NORMAL","27":"NORMAL","28":"NORMAL","29":"NORMAL","30":"NORMAL","31":"NORMAL","32":"NORMAL","33":"NORMAL","34":"NORMAL","35":"NORMAL","36":"NORMAL","37":"NORMAL","38":"NORMAL","39":"NORMAL","40":"NORMAL","41":"NORMAL","42":"NORMAL","43":"NORMAL","44":"NORMAL"},"deliv":30.6},{"mac":"00:00:00:00:00:13","ip":"10.1.1.10","port":9,"role":"innocent","shared":true,"rate":{"0":0,"1":0,"2":0,"3":122,"4":123,"5":122,"6":122,"7":122,"8":122,"9":122,"10":122,"11":122,"12":122,"13":122,"14":122,"15":122,"16":122,"17":122,"18":122,"19":123,"20":122,"21":122,"22":122,"23":122,"24":122,"25":122,"26":122,"27":122,"28":122,"29":122,"30":122,"31":122,"32":122,"33":123,"34":122,"35":122,"36":122,"37":122,"38":122,"39":122,"40":122,"41":122,"42":122,"43":122,"44":121},"state":{"0":"NORMAL","1":"NORMAL","2":"NORMAL","3":"NORMAL","4":"NORMAL","5":"NORMAL","6":"NORMAL","7":"NORMAL","8":"NORMAL","9":"NORMAL","10":"NORMAL","11":"NORMAL","12":"NORMAL","13":"NORMAL","14":"NORMAL","15":"NORMAL","16":"NORMAL","17":"NORMAL","18":"NORMAL","19":"NORMAL","20":"NORMAL","21":"NORMAL","22":"NORMAL","23":"NORMAL","24":"NORMAL","25":"NORMAL","26":"NORMAL","27":"NORMAL","28":"NORMAL","29":"NORMAL","30":"NORMAL","31":"NORMAL","32":"NORMAL","33":"NORMAL","34":"NORMAL","35":"NORMAL","36":"NORMAL","37":"NORMAL","38":"NORMAL","39":"NORMAL","40":"NORMAL","41":"NORMAL","42":"NORMAL","43":"NORMAL","44":"NORMAL"},"deliv":32.4},{"mac":"00:00:00:00:00:0b","ip":"10.1.1.6","port":6,"role":"attacker","shared":false,"rate":{"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"6":0,"7":0,"8":0,"9":0,"10":0,"11":0,"12":39064,"13":39062,"14":39063,"15":39062,"16":39063,"17":39062,"18":39063,"19":39062,"20":39063,"21":39062,"22":39063,"23":39062,"24":39063,"25":39062,"26":39063,"27":39062,"28":39063,"29":39062,"30":39063,"31":39062,"32":39063,"33":39062,"34":39063,"35":39062,"36":39063,"37":39062,"38":39063,"39":39062,"40":39063,"41":39062,"42":39063,"43":39062,"44":38792},"state":{"0":"NORMAL","1":"NORMAL","2":"NORMAL","3":"NORMAL","4":"NORMAL","5":"NORMAL","6":"NORMAL","7":"NORMAL","8":"NORMAL","9":"NORMAL","10":"NORMAL","11":"NORMAL","12":"NORMAL","13":"NORMAL","14":"BLACKLISTED","15":"BLACKLISTED","16":"BLACKLISTED","17":"BLACKLISTED","18":"BLACKLISTED","19":"BLACKLISTED","20":"BLACKLISTED","21":"BLACKLISTED","22":"BLACKLISTED","23":"BLACKLISTED","24":"BLACKLISTED","25":"BLACKLISTED","26":"BLACKLISTED","27":"BLACKLISTED","28":"BLACKLISTED","29":"BLACKLISTED","30":"BLACKLISTED","31":"BLACKLISTED","32":"BLACKLISTED","33":"BLACKLISTED","34":"BLACKLISTED","35":"BLACKLISTED","36":"BLACKLISTED","37":"BLACKLISTED","38":"BLACKLISTED","39":"BLACKLISTED","40":"BLACKLISTED","41":"BLACKLISTED","42":"BLACKLISTED","43":"BLACKLISTED","44":"BLACKLISTED"},"deliv":25.0},{"mac":"00:00:00:00:00:0d","ip":"10.1.1.7","port":7,"role":"attacker","shared":false,"rate":{"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"6":0,"7":0,"8":0,"9":0,"10":0,"11":39061,"12":39064,"13":39062,"14":39063,"15":39062,"16":39063,"17":39062,"18":39063,"19":39062,"20":39063,"21":39062,"22":39063,"23":39062,"24":39063,"25":39062,"26":39063,"27":39062,"28":39063,"29":39062,"30":39063,"31":39062,"32":39063,"33":39062,"34":39063,"35":39062,"36":39063,"37":39062,"38":39063,"39":39062,"40":39063,"41":39062,"42":39063,"43":39062,"44":38792},"state":{"0":"NORMAL","1":"NORMAL","2":"NORMAL","3":"NORMAL","4":"NORMAL","5":"NORMAL","6":"NORMAL","7":"NORMAL","8":"NORMAL","9":"NORMAL","10":"NORMAL","11":"NORMAL","12":"NORMAL","13":"BLACKLISTED","14":"BLACKLISTED","15":"BLACKLISTED","16":"BLACKLISTED","17":"BLACKLISTED","18":"BLACKLISTED","19":"BLACKLISTED","20":"BLACKLISTED","21":"BLACKLISTED","22":"BLACKLISTED","23":"BLACKLISTED","24":"BLACKLISTED","25":"BLACKLISTED","26":"BLACKLISTED","27":"BLACKLISTED","28":"BLACKLISTED","29":"BLACKLISTED","30":"BLACKLISTED","31":"BLACKLISTED","32":"BLACKLISTED","33":"BLACKLISTED","34":"BLACKLISTED","35":"BLACKLISTED","36":"BLACKLISTED","37":"BLACKLISTED","38":"BLACKLISTED","39":"BLACKLISTED","40":"BLACKLISTED","41":"BLACKLISTED","42":"BLACKLISTED","43":"BLACKLISTED","44":"BLACKLISTED"},"deliv":0.0},{"mac":"00:00:00:00:00:12","ip":"10.1.1.9","port":9,"role":"attacker","shared":true,"rate":{"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"6":0,"7":0,"8":0,"9":0,"10":0,"11":39061,"12":39064,"13":39062,"14":39063,"15":39062,"16":39063,"17":39062,"18":39062,"19":39063,"20":39063,"21":39062,"22":39063,"23":39062,"24":39063,"25":39062,"26":39063,"27":39062,"28":39063,"29":39062,"30":39063,"31":39062,"32":39063,"33":39062,"34":39063,"35":39062,"36":39063,"37":39062,"38":39063,"39":39062,"40":39063,"41":39062,"42":39063,"43":39062,"44":38792},"state":{"0":"NORMAL","1":"NORMAL","2":"NORMAL","3":"NORMAL","4":"NORMAL","5":"NORMAL","6":"NORMAL","7":"NORMAL","8":"NORMAL","9":"NORMAL","10":"NORMAL","11":"NORMAL","12":"NORMAL","13":"BLACKLISTED","14":"BLACKLISTED","15":"BLACKLISTED","16":"BLACKLISTED","17":"BLACKLISTED","18":"BLACKLISTED","19":"BLACKLISTED","20":"BLACKLISTED","21":"BLACKLISTED","22":"BLACKLISTED","23":"BLACKLISTED","24":"BLACKLISTED","25":"BLACKLISTED","26":"BLACKLISTED","27":"BLACKLISTED","28":"BLACKLISTED","29":"BLACKLISTED","30":"BLACKLISTED","31":"BLACKLISTED","32":"BLACKLISTED","33":"BLACKLISTED","34":"BLACKLISTED","35":"BLACKLISTED","36":"BLACKLISTED","37":"BLACKLISTED","38":"BLACKLISTED","39":"BLACKLISTED","40":"BLACKLISTED","41":"BLACKLISTED","42":"BLACKLISTED","43":"BLACKLISTED","44":"BLACKLISTED"},"deliv":0.2},{"mac":"00:00:00:00:00:0f","ip":"10.1.1.8","port":8,"role":"server","shared":false,"rate":{"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"6":0,"7":0,"8":0,"9":0,"10":0,"11":0,"12":0,"13":0,"14":0,"15":0,"16":0,"17":0,"18":0,"19":0,"20":0,"21":0,"22":0,"23":0,"24":0,"25":0,"26":0,"27":0,"28":0,"29":0,"30":0,"31":0,"32":0,"33":0,"34":0,"35":0,"36":0,"37":0,"38":0,"39":0,"40":0,"41":0,"42":0,"43":0,"44":0},"state":{"0":"NORMAL","1":"NORMAL","2":"NORMAL","3":"NORMAL","4":"NORMAL","5":"NORMAL","6":"NORMAL","7":"NORMAL","8":"NORMAL","9":"NORMAL","10":"NORMAL","11":"NORMAL","12":"NORMAL","13":"NORMAL","14":"NORMAL","15":"NORMAL","16":"NORMAL","17":"NORMAL","18":"NORMAL","19":"NORMAL","20":"NORMAL","21":"NORMAL","22":"NORMAL","23":"NORMAL","24":"NORMAL","25":"NORMAL","26":"NORMAL","27":"NORMAL","28":"NORMAL","29":"NORMAL","30":"NORMAL","31":"NORMAL","32":"NORMAL","33":"NORMAL","34":"NORMAL","35":"NORMAL","36":"NORMAL","37":"NORMAL","38":"NORMAL","39":"NORMAL","40":"NORMAL","41":"NORMAL","42":"NORMAL","43":"NORMAL","44":"NORMAL"},"deliv":null}],"detections":[{"t":11.007,"mac":"00:00:00:00:00:0d","ip":"10.1.1.7","port":7,"pps":39061,"thr":615,"offense":1,"event":"DETECTED"},{"t":11.007,"mac":"00:00:00:00:00:12","ip":"10.1.1.9","port":9,"pps":39061,"thr":615,"offense":1,"event":"DETECTED"},{"t":12.007,"mac":"00:00:00:00:00:0b","ip":"10.1.1.6","port":6,"pps":39064,"thr":615,"offense":1,"event":"DETECTED"},{"t":12.007,"mac":"00:00:00:00:00:0d","ip":"10.1.1.7","port":7,"pps":39064,"thr":615,"offense":2,"event":"DETECTED"},{"t":12.007,"mac":"00:00:00:00:00:12","ip":"10.1.1.9","port":9,"pps":39064,"thr":615,"offense":2,"event":"DETECTED"},{"t":13.007,"mac":"00:00:00:00:00:0b","ip":"10.1.1.6","port":6,"pps":39062,"thr":615,"offense":2,"event":"DETECTED"},{"t":13.007,"mac":"00:00:00:00:00:0d","ip":"10.1.1.7","port":7,"pps":39062,"thr":615,"offense":3,"event":"DETECTED"},{"t":13.007,"mac":"00:00:00:00:00:12","ip":"10.1.1.9","port":9,"pps":39062,"thr":615,"offense":3,"event":"DETECTED"},{"t":14.007,"mac":"00:00:00:00:00:0b","ip":"10.1.1.6","port":6,"pps":39063,"thr":615,"offense":3,"event":"DETECTED"}],"metrics":{"1":{"entropy":0.0,"top":0.0,"baseline":0,"threshold":0},"2":{"entropy":0.0,"top":0.0,"baseline":0,"threshold":0},"3":{"entropy":2.585,"top":16.7,"baseline":122,"threshold":0},"4":{"entropy":2.585,"top":16.8,"baseline":123,"threshold":0},"5":{"entropy":2.585,"top":16.7,"baseline":123,"threshold":0},"6":{"entropy":2.585,"top":16.7,"baseline":123,"threshold":0},"7":{"entropy":2.585,"top":16.8,"baseline":123,"threshold":0},"8":{"entropy":2.585,"top":16.7,"baseline":123,"threshold":615},"9":{"entropy":2.585,"top":16.7,"baseline":123,"threshold":615},"10":{"entropy":2.585,"top":16.8,"baseline":123,"threshold":615},"11":{"entropy":1.091,"top":49.5,"baseline":123,"threshold":615},"12":{"entropy":1.646,"top":33.1,"baseline":123,"threshold":615},"13":{"entropy":1.646,"top":33.1,"baseline":123,"threshold":615},"14":{"entropy":1.646,"top":33.1,"baseline":123,"threshold":615},"15":{"entropy":1.646,"top":33.1,"baseline":123,"threshold":615},"16":{"entropy":1.646,"top":33.1,"baseline":123,"threshold":615},"17":{"entropy":1.646,"top":33.1,"baseline":123,"threshold":615},"18":{"entropy":1.646,"top":33.1,"baseline":123,"threshold":615},"19":{"entropy":1.646,"top":33.1,"baseline":123,"threshold":615},"20":{"entropy":1.646,"top":33.1,"baseline":123,"threshold":615},"21":{"entropy":1.646,"top":33.1,"baseline":123,"threshold":615},"22":{"entropy":1.646,"top":33.1,"baseline":123,"threshold":615},"23":{"entropy":1.646,"top":33.1,"baseline":123,"threshold":615},"24":{"entropy":1.646,"top":33.1,"baseline":123,"threshold":615},"25":{"entropy":1.646,"top":33.1,"baseline":123,"threshold":615},"26":{"entropy":1.646,"top":33.1,"baseline":123,"threshold":615},"27":{"entropy":1.646,"top":33.1,"baseline":123,"threshold":615},"28":{"entropy":1.646,"top":33.1,"baseline":123,"threshold":615},"29":{"entropy":1.646,"top":33.1,"baseline":123,"threshold":615},"30":{"entropy":1.646,"top":33.1,"baseline":123,"threshold":615},"31":{"entropy":1.646,"top":33.1,"baseline":123,"threshold":615},"32":{"entropy":1.646,"top":33.1,"baseline":123,"threshold":615},"33":{"entropy":1.646,"top":33.1,"baseline":123,"threshold":615},"34":{"entropy":1.646,"top":33.1,"baseline":123,"threshold":615},"35":{"entropy":1.646,"top":33.1,"baseline":123,"threshold":615},"36":{"entropy":1.646,"top":33.1,"baseline":123,"threshold":615},"37":{"entropy":1.646,"top":33.1,"baseline":123,"threshold":615},"38":{"entropy":1.646,"top":33.1,"baseline":123,"threshold":615},"39":{"entropy":1.646,"top":33.1,"baseline":123,"threshold":615},"40":{"entropy":1.646,"top":33.1,"baseline":123,"threshold":615},"41":{"entropy":1.646,"top":33.1,"baseline":123,"threshold":615},"42":{"entropy":1.646,"top":33.1,"baseline":123,"threshold":615},"43":{"entropy":1.646,"top":33.1,"baseline":123,"threshold":615},"44":{"entropy":1.646,"top":33.1,"baseline":123,"threshold":615}},"flow":{"clientDeliv":30.0,"innocentDeliv":32.4,"attackerDeliv":8.4}},"mitigated":{"sources":[{"mac":"00:00:00:00:00:01","ip":"10.1.1.1","port":1,"role":"client","shared":false,"rate":{"0":0,"1":0,"2":0,"3":122,"4":123,"5":122,"6":122,"7":122,"8":122,"9":122,"10":122,"11":122,"12":122,"13":122,"14":122,"15":122,"16":122,"17":122,"18":123,"19":122,"20":122,"21":122,"22":122,"23":122,"24":122,"25":122,"26":122,"27":122,"28":122,"29":122,"30":122,"31":122,"32":123,"33":122,"34":122,"35":122,"36":122,"37":122,"38":122,"39":122,"40":122,"41":122,"42":122,"43":122,"44":122},"state":{"0":"NORMAL","1":"NORMAL","2":"NORMAL","3":"NORMAL","4":"NORMAL","5":"NORMAL","6":"NORMAL","7":"NORMAL","8":"NORMAL","9":"NORMAL","10":"NORMAL","11":"NORMAL","12":"NORMAL","13":"NORMAL","14":"NORMAL","15":"NORMAL","16":"NORMAL","17":"NORMAL","18":"NORMAL","19":"NORMAL","20":"NORMAL","21":"NORMAL","22":"NORMAL","23":"NORMAL","24":"NORMAL","25":"NORMAL","26":"NORMAL","27":"NORMAL","28":"NORMAL","29":"NORMAL","30":"NORMAL","31":"NORMAL","32":"NORMAL","33":"NORMAL","34":"NORMAL","35":"NORMAL","36":"NORMAL","37":"NORMAL","38":"NORMAL","39":"NORMAL","40":"NORMAL","41":"NORMAL","42":"NORMAL","43":"NORMAL","44":"NORMAL"},"deliv":83.6},{"mac":"00:00:00:00:00:03","ip":"10.1.1.2","port":2,"role":"client","shared":false,"rate":{"0":0,"1":0,"2":0,"3":122,"4":122,"5":122,"6":122,"7":123,"8":122,"9":122,"10":122,"11":122,"12":122,"13":122,"14":122,"15":122,"16":122,"17":122,"18":122,"19":122,"20":122,"21":123,"22":122,"23":122,"24":122,"25":122,"26":122,"27":122,"28":122,"29":122,"30":122,"31":122,"32":122,"33":122,"34":122,"35":123,"36":122,"37":122,"38":122,"39":122,"40":122,"41":122,"42":122,"43":122,"44":121},"state":{"0":"NORMAL","1":"NORMAL","2":"NORMAL","3":"NORMAL","4":"NORMAL","5":"NORMAL","6":"NORMAL","7":"NORMAL","8":"NORMAL","9":"NORMAL","10":"NORMAL","11":"NORMAL","12":"NORMAL","13":"NORMAL","14":"NORMAL","15":"NORMAL","16":"NORMAL","17":"NORMAL","18":"NORMAL","19":"NORMAL","20":"NORMAL","21":"NORMAL","22":"NORMAL","23":"NORMAL","24":"NORMAL","25":"NORMAL","26":"NORMAL","27":"NORMAL","28":"NORMAL","29":"NORMAL","30":"NORMAL","31":"NORMAL","32":"NORMAL","33":"NORMAL","34":"NORMAL","35":"NORMAL","36":"NORMAL","37":"NORMAL","38":"NORMAL","39":"NORMAL","40":"NORMAL","41":"NORMAL","42":"NORMAL","43":"NORMAL","44":"NORMAL"},"deliv":82.9},{"mac":"00:00:00:00:00:05","ip":"10.1.1.3","port":3,"role":"client","shared":false,"rate":{"0":0,"1":0,"2":0,"3":122,"4":122,"5":122,"6":122,"7":122,"8":122,"9":122,"10":123,"11":122,"12":122,"13":122,"14":122,"15":122,"16":122,"17":122,"18":122,"19":122,"20":122,"21":122,"22":122,"23":122,"24":123,"25":122,"26":122,"27":122,"28":122,"29":122,"30":122,"31":122,"32":122,"33":122,"34":122,"35":122,"36":122,"37":122,"38":123,"39":122,"40":122,"41":122,"42":122,"43":122,"44":121},"state":{"0":"NORMAL","1":"NORMAL","2":"NORMAL","3":"NORMAL","4":"NORMAL","5":"NORMAL","6":"NORMAL","7":"NORMAL","8":"NORMAL","9":"NORMAL","10":"NORMAL","11":"NORMAL","12":"NORMAL","13":"NORMAL","14":"NORMAL","15":"NORMAL","16":"NORMAL","17":"NORMAL","18":"NORMAL","19":"NORMAL","20":"NORMAL","21":"NORMAL","22":"NORMAL","23":"NORMAL","24":"NORMAL","25":"NORMAL","26":"NORMAL","27":"NORMAL","28":"NORMAL","29":"NORMAL","30":"NORMAL","31":"NORMAL","32":"NORMAL","33":"NORMAL","34":"NORMAL","35":"NORMAL","36":"NORMAL","37":"NORMAL","38":"NORMAL","39":"NORMAL","40":"NORMAL","41":"NORMAL","42":"NORMAL","43":"NORMAL","44":"NORMAL"},"deliv":83.7},{"mac":"00:00:00:00:00:07","ip":"10.1.1.4","port":4,"role":"client","shared":false,"rate":{"0":0,"1":0,"2":0,"3":122,"4":122,"5":122,"6":122,"7":122,"8":122,"9":122,"10":122,"11":122,"12":122,"13":123,"14":122,"15":122,"16":122,"17":122,"18":122,"19":122,"20":122,"21":122,"22":122,"23":122,"24":122,"25":122,"26":122,"27":123,"28":122,"29":122,"30":122,"31":122,"32":122,"33":122,"34":122,"35":122,"36":122,"37":122,"38":122,"39":122,"40":122,"41":123,"42":122,"43":122,"44":121},"state":{"0":"NORMAL","1":"NORMAL","2":"NORMAL","3":"NORMAL","4":"NORMAL","5":"NORMAL","6":"NORMAL","7":"NORMAL","8":"NORMAL","9":"NORMAL","10":"NORMAL","11":"NORMAL","12":"NORMAL","13":"NORMAL","14":"NORMAL","15":"NORMAL","16":"NORMAL","17":"NORMAL","18":"NORMAL","19":"NORMAL","20":"NORMAL","21":"NORMAL","22":"NORMAL","23":"NORMAL","24":"NORMAL","25":"NORMAL","26":"NORMAL","27":"NORMAL","28":"NORMAL","29":"NORMAL","30":"NORMAL","31":"NORMAL","32":"NORMAL","33":"NORMAL","34":"NORMAL","35":"NORMAL","36":"NORMAL","37":"NORMAL","38":"NORMAL","39":"NORMAL","40":"NORMAL","41":"NORMAL","42":"NORMAL","43":"NORMAL","44":"NORMAL"},"deliv":83.8},{"mac":"00:00:00:00:00:09","ip":"10.1.1.5","port":5,"role":"client","shared":false,"rate":{"0":0,"1":0,"2":0,"3":122,"4":122,"5":122,"6":122,"7":122,"8":122,"9":122,"10":122,"11":122,"12":122,"13":122,"14":122,"15":122,"16":123,"17":122,"18":122,"19":122,"20":122,"21":122,"22":122,"23":122,"24":122,"25":122,"26":122,"27":122,"28":122,"29":122,"30":123,"31":122,"32":122,"33":122,"34":122,"35":122,"36":122,"37":122,"38":122,"39":122,"40":122,"41":122,"42":122,"43":122,"44":122},"state":{"0":"NORMAL","1":"NORMAL","2":"NORMAL","3":"NORMAL","4":"NORMAL","5":"NORMAL","6":"NORMAL","7":"NORMAL","8":"NORMAL","9":"NORMAL","10":"NORMAL","11":"NORMAL","12":"NORMAL","13":"NORMAL","14":"NORMAL","15":"NORMAL","16":"NORMAL","17":"NORMAL","18":"NORMAL","19":"NORMAL","20":"NORMAL","21":"NORMAL","22":"NORMAL","23":"NORMAL","24":"NORMAL","25":"NORMAL","26":"NORMAL","27":"NORMAL","28":"NORMAL","29":"NORMAL","30":"NORMAL","31":"NORMAL","32":"NORMAL","33":"NORMAL","34":"NORMAL","35":"NORMAL","36":"NORMAL","37":"NORMAL","38":"NORMAL","39":"NORMAL","40":"NORMAL","41":"NORMAL","42":"NORMAL","43":"NORMAL","44":"NORMAL"},"deliv":83.6},{"mac":"00:00:00:00:00:13","ip":"10.1.1.10","port":9,"role":"innocent","shared":true,"rate":{"0":0,"1":0,"2":0,"3":122,"4":123,"5":122,"6":122,"7":122,"8":122,"9":122,"10":122,"11":122,"12":61,"13":122,"14":122,"15":122,"16":122,"17":122,"18":122,"19":61,"20":122,"21":122,"22":122,"23":122,"24":122,"25":122,"26":122,"27":122,"28":122,"29":122,"30":122,"31":122,"32":122,"33":123,"34":122,"35":122,"36":122,"37":122,"38":122,"39":122,"40":122,"41":61,"42":122,"43":122,"44":121},"state":{"0":"NORMAL","1":"NORMAL","2":"NORMAL","3":"NORMAL","4":"NORMAL","5":"NORMAL","6":"NORMAL","7":"NORMAL","8":"NORMAL","9":"NORMAL","10":"NORMAL","11":"NORMAL","12":"NORMAL","13":"NORMAL","14":"NORMAL","15":"NORMAL","16":"NORMAL","17":"NORMAL","18":"NORMAL","19":"NORMAL","20":"NORMAL","21":"NORMAL","22":"NORMAL","23":"NORMAL","24":"NORMAL","25":"NORMAL","26":"NORMAL","27":"NORMAL","28":"NORMAL","29":"NORMAL","30":"NORMAL","31":"NORMAL","32":"NORMAL","33":"NORMAL","34":"NORMAL","35":"NORMAL","36":"NORMAL","37":"NORMAL","38":"NORMAL","39":"NORMAL","40":"NORMAL","41":"NORMAL","42":"NORMAL","43":"NORMAL","44":"NORMAL"},"deliv":83.4},{"mac":"00:00:00:00:00:0b","ip":"10.1.1.6","port":6,"role":"attacker","shared":false,"rate":{"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"6":0,"7":0,"8":0,"9":0,"10":0,"11":0,"12":39064,"13":0,"14":0,"15":0,"16":0,"17":0,"18":0,"19":39062,"20":0,"21":0,"22":0,"23":0,"24":0,"25":0,"26":0,"27":0,"28":0,"29":0,"30":0,"31":0,"32":0,"33":0,"34":0,"35":0,"36":0,"37":0,"38":0,"39":0,"40":0,"41":39062,"42":0,"43":0,"44":0},"state":{"0":"NORMAL","1":"NORMAL","2":"NORMAL","3":"NORMAL","4":"NORMAL","5":"NORMAL","6":"NORMAL","7":"NORMAL","8":"NORMAL","9":"NORMAL","10":"NORMAL","11":"NORMAL","12":"BLOCKED","13":"BLOCKED","14":"BLOCKED","15":"BLOCKED","16":"BLOCKED","17":"BLOCKED","18":"WATCH","19":"BLOCKED","20":"BLOCKED","21":"BLOCKED","22":"BLOCKED","23":"BLOCKED","24":"BLOCKED","25":"BLOCKED","26":"BLOCKED","27":"BLOCKED","28":"BLOCKED","29":"BLOCKED","30":"BLOCKED","31":"BLOCKED","32":"BLOCKED","33":"BLOCKED","34":"BLOCKED","35":"BLOCKED","36":"BLOCKED","37":"BLOCKED","38":"BLOCKED","39":"BLOCKED","40":"WATCH","41":"BLACKLISTED","42":"BLACKLISTED","43":"BLACKLISTED","44":"BLACKLISTED"},"deliv":4.4},{"mac":"00:00:00:00:00:0d","ip":"10.1.1.7","port":7,"role":"attacker","shared":false,"rate":{"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"6":0,"7":0,"8":0,"9":0,"10":0,"11":39061,"12":1,"13":0,"14":0,"15":0,"16":0,"17":0,"18":39063,"19":0,"20":0,"21":0,"22":0,"23":0,"24":0,"25":0,"26":0,"27":0,"28":0,"29":0,"30":0,"31":0,"32":0,"33":0,"34":0,"35":0,"36":0,"37":0,"38":0,"39":0,"40":39063,"41":0,"42":0,"43":0,"44":0},"state":{"0":"NORMAL","1":"NORMAL","2":"NORMAL","3":"NORMAL","4":"NORMAL","5":"NORMAL","6":"NORMAL","7":"NORMAL","8":"NORMAL","9":"NORMAL","10":"NORMAL","11":"BLOCKED","12":"BLOCKED","13":"BLOCKED","14":"BLOCKED","15":"BLOCKED","16":"BLOCKED","17":"WATCH","18":"BLOCKED","19":"BLOCKED","20":"BLOCKED","21":"BLOCKED","22":"BLOCKED","23":"BLOCKED","24":"BLOCKED","25":"BLOCKED","26":"BLOCKED","27":"BLOCKED","28":"BLOCKED","29":"BLOCKED","30":"BLOCKED","31":"BLOCKED","32":"BLOCKED","33":"BLOCKED","34":"BLOCKED","35":"BLOCKED","36":"BLOCKED","37":"BLOCKED","38":"BLOCKED","39":"WATCH","40":"BLACKLISTED","41":"BLACKLISTED","42":"BLACKLISTED","43":"BLACKLISTED","44":"BLACKLISTED"},"deliv":1.5},{"mac":"00:00:00:00:00:12","ip":"10.1.1.9","port":9,"role":"attacker","shared":true,"rate":{"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"6":0,"7":0,"8":0,"9":0,"10":0,"11":39061,"12":1,"13":0,"14":0,"15":0,"16":0,"17":0,"18":39062,"19":0,"20":0,"21":0,"22":0,"23":0,"24":0,"25":0,"26":0,"27":0,"28":0,"29":0,"30":0,"31":0,"32":0,"33":0,"34":0,"35":0,"36":0,"37":0,"38":0,"39":0,"40":39063,"41":0,"42":0,"43":0,"44":0},"state":{"0":"NORMAL","1":"NORMAL","2":"NORMAL","3":"NORMAL","4":"NORMAL","5":"NORMAL","6":"NORMAL","7":"NORMAL","8":"NORMAL","9":"NORMAL","10":"NORMAL","11":"BLOCKED","12":"BLOCKED","13":"BLOCKED","14":"BLOCKED","15":"BLOCKED","16":"BLOCKED","17":"WATCH","18":"BLOCKED","19":"BLOCKED","20":"BLOCKED","21":"BLOCKED","22":"BLOCKED","23":"BLOCKED","24":"BLOCKED","25":"BLOCKED","26":"BLOCKED","27":"BLOCKED","28":"BLOCKED","29":"BLOCKED","30":"BLOCKED","31":"BLOCKED","32":"BLOCKED","33":"BLOCKED","34":"BLOCKED","35":"BLOCKED","36":"BLOCKED","37":"BLOCKED","38":"BLOCKED","39":"WATCH","40":"BLACKLISTED","41":"BLACKLISTED","42":"BLACKLISTED","43":"BLACKLISTED","44":"BLACKLISTED"},"deliv":0.0},{"mac":"00:00:00:00:00:0f","ip":"10.1.1.8","port":8,"role":"server","shared":false,"rate":{"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"6":0,"7":0,"8":0,"9":0,"10":0,"11":0,"12":0,"13":0,"14":0,"15":0,"16":0,"17":0,"18":0,"19":0,"20":0,"21":0,"22":0,"23":0,"24":0,"25":0,"26":0,"27":0,"28":0,"29":0,"30":0,"31":0,"32":0,"33":0,"34":0,"35":0,"36":0,"37":0,"38":0,"39":0,"40":0,"41":0,"42":0,"43":0,"44":0},"state":{"0":"NORMAL","1":"NORMAL","2":"NORMAL","3":"NORMAL","4":"NORMAL","5":"NORMAL","6":"NORMAL","7":"NORMAL","8":"NORMAL","9":"NORMAL","10":"NORMAL","11":"NORMAL","12":"NORMAL","13":"NORMAL","14":"NORMAL","15":"NORMAL","16":"NORMAL","17":"NORMAL","18":"NORMAL","19":"NORMAL","20":"NORMAL","21":"NORMAL","22":"NORMAL","23":"NORMAL","24":"NORMAL","25":"NORMAL","26":"NORMAL","27":"NORMAL","28":"NORMAL","29":"NORMAL","30":"NORMAL","31":"NORMAL","32":"NORMAL","33":"NORMAL","34":"NORMAL","35":"NORMAL","36":"NORMAL","37":"NORMAL","38":"NORMAL","39":"NORMAL","40":"NORMAL","41":"NORMAL","42":"NORMAL","43":"NORMAL","44":"NORMAL"},"deliv":null}],"detections":[{"t":11.007,"mac":"00:00:00:00:00:0d","ip":"10.1.1.7","port":7,"pps":39061,"thr":615,"offense":1,"event":"DETECTED"},{"t":11.007,"mac":"00:00:00:00:00:0d","ip":"10.1.1.7","port":7,"pps":39061,"thr":615,"offense":1,"event":"BLOCKED_PORT"},{"t":11.007,"mac":"00:00:00:00:00:12","ip":"10.1.1.9","port":9,"pps":39061,"thr":615,"offense":1,"event":"DETECTED"},{"t":11.007,"mac":"00:00:00:00:00:12","ip":"10.1.1.9","port":9,"pps":39061,"thr":615,"offense":1,"event":"BLOCKED_PORT"},{"t":11.507,"mac":"00:00:00:00:00:0d","ip":"10.1.1.7","port":7,"pps":0,"thr":615,"offense":1,"event":"ISOLATED_IP"},{"t":11.507,"mac":"00:00:00:00:00:12","ip":"10.1.1.9","port":9,"pps":0,"thr":615,"offense":1,"event":"ISOLATED_IP"},{"t":12.007,"mac":"00:00:00:00:00:0b","ip":"10.1.1.6","port":6,"pps":39064,"thr":615,"offense":1,"event":"DETECTED"},{"t":12.007,"mac":"00:00:00:00:00:0b","ip":"10.1.1.6","port":6,"pps":39064,"thr":615,"offense":1,"event":"BLOCKED_PORT"},{"t":12.507,"mac":"00:00:00:00:00:0b","ip":"10.1.1.6","port":6,"pps":0,"thr":615,"offense":1,"event":"ISOLATED_IP"},{"t":16.007,"mac":"00:00:00:00:00:0d","ip":"10.1.1.7","port":7,"pps":0,"thr":308,"offense":1,"event":"UNBLOCKED"},{"t":16.007,"mac":"00:00:00:00:00:12","ip":"10.1.1.9","port":9,"pps":0,"thr":308,"offense":1,"event":"UNBLOCKED"},{"t":17.007,"mac":"00:00:00:00:00:0b","ip":"10.1.1.6","port":6,"pps":0,"thr":308,"offense":1,"event":"UNBLOCKED"},{"t":18.007,"mac":"00:00:00:00:00:0d","ip":"10.1.1.7","port":7,"pps":39063,"thr":308,"offense":2,"event":"DETECTED"},{"t":18.007,"mac":"00:00:00:00:00:0d","ip":"10.1.1.7","port":7,"pps":39063,"thr":308,"offense":2,"event":"BLOCKED_PORT"},{"t":18.007,"mac":"00:00:00:00:00:12","ip":"10.1.1.9","port":9,"pps":39062,"thr":308,"offense":2,"event":"DETECTED"},{"t":18.007,"mac":"00:00:00:00:00:12","ip":"10.1.1.9","port":9,"pps":39062,"thr":308,"offense":2,"event":"BLOCKED_PORT"},{"t":18.507,"mac":"00:00:00:00:00:0d","ip":"10.1.1.7","port":7,"pps":0,"thr":308,"offense":2,"event":"ISOLATED_IP"},{"t":18.507,"mac":"00:00:00:00:00:12","ip":"10.1.1.9","port":9,"pps":0,"thr":308,"offense":2,"event":"ISOLATED_IP"},{"t":19.007,"mac":"00:00:00:00:00:0b","ip":"10.1.1.6","port":6,"pps":39062,"thr":308,"offense":2,"event":"DETECTED"},{"t":19.007,"mac":"00:00:00:00:00:0b","ip":"10.1.1.6","port":6,"pps":39062,"thr":308,"offense":2,"event":"BLOCKED_PORT"},{"t":19.507,"mac":"00:00:00:00:00:0b","ip":"10.1.1.6","port":6,"pps":0,"thr":308,"offense":2,"event":"ISOLATED_IP"},{"t":38.007,"mac":"00:00:00:00:00:0d","ip":"10.1.1.7","port":7,"pps":0,"thr":308,"offense":2,"event":"UNBLOCKED"},{"t":38.007,"mac":"00:00:00:00:00:12","ip":"10.1.1.9","port":9,"pps":0,"thr":308,"offense":2,"event":"UNBLOCKED"},{"t":39.007,"mac":"00:00:00:00:00:0b","ip":"10.1.1.6","port":6,"pps":0,"thr":308,"offense":2,"event":"UNBLOCKED"},{"t":40.007,"mac":"00:00:00:00:00:0d","ip":"10.1.1.7","port":7,"pps":39063,"thr":308,"offense":3,"event":"DETECTED"},{"t":40.007,"mac":"00:00:00:00:00:0d","ip":"10.1.1.7","port":7,"pps":39063,"thr":308,"offense":3,"event":"BLOCKED_PORT"},{"t":40.007,"mac":"00:00:00:00:00:0d","ip":"10.1.1.7","port":7,"pps":39063,"thr":308,"offense":3,"event":"BLACKLISTED"},{"t":40.007,"mac":"00:00:00:00:00:12","ip":"10.1.1.9","port":9,"pps":39063,"thr":308,"offense":3,"event":"DETECTED"},{"t":40.007,"mac":"00:00:00:00:00:12","ip":"10.1.1.9","port":9,"pps":39063,"thr":308,"offense":3,"event":"BLOCKED_PORT"},{"t":40.007,"mac":"00:00:00:00:00:12","ip":"10.1.1.9","port":9,"pps":39063,"thr":308,"offense":3,"event":"BLACKLISTED"},{"t":40.507,"mac":"00:00:00:00:00:0d","ip":"10.1.1.7","port":7,"pps":0,"thr":308,"offense":3,"event":"ISOLATED_IP"},{"t":40.507,"mac":"00:00:00:00:00:12","ip":"10.1.1.9","port":9,"pps":0,"thr":308,"offense":3,"event":"ISOLATED_IP"},{"t":41.007,"mac":"00:00:00:00:00:0b","ip":"10.1.1.6","port":6,"pps":39062,"thr":308,"offense":3,"event":"DETECTED"},{"t":41.007,"mac":"00:00:00:00:00:0b","ip":"10.1.1.6","port":6,"pps":39062,"thr":308,"offense":3,"event":"BLOCKED_PORT"},{"t":41.007,"mac":"00:00:00:00:00:0b","ip":"10.1.1.6","port":6,"pps":39062,"thr":308,"offense":3,"event":"BLACKLISTED"},{"t":41.507,"mac":"00:00:00:00:00:0b","ip":"10.1.1.6","port":6,"pps":0,"thr":308,"offense":3,"event":"ISOLATED_IP"}],"metrics":{"1":{"entropy":0.0,"top":0.0,"baseline":0,"threshold":0},"2":{"entropy":0.0,"top":0.0,"baseline":0,"threshold":0},"3":{"entropy":2.585,"top":16.7,"baseline":122,"threshold":0},"4":{"entropy":2.585,"top":16.8,"baseline":123,"threshold":0},"5":{"entropy":2.585,"top":16.7,"baseline":123,"threshold":0},"6":{"entropy":2.585,"top":16.7,"baseline":123,"threshold":0},"7":{"entropy":2.585,"top":16.8,"baseline":123,"threshold":0},"8":{"entropy":2.585,"top":16.7,"baseline":123,"threshold":615},"9":{"entropy":2.585,"top":16.7,"baseline":123,"threshold":615},"10":{"entropy":2.585,"top":16.8,"baseline":123,"threshold":615},"11":{"entropy":1.091,"top":49.5,"baseline":123,"threshold":615},"12":{"entropy":0.167,"top":98.3,"baseline":123,"threshold":615},"13":{"entropy":2.585,"top":16.8,"baseline":123,"threshold":615},"14":{"entropy":2.585,"top":16.7,"baseline":123,"threshold":615},"15":{"entropy":2.585,"top":16.7,"baseline":123,"threshold":615},"16":{"entropy":2.585,"top":16.8,"baseline":123,"threshold":615},"17":{"entropy":2.585,"top":16.7,"baseline":123,"threshold":615},"18":{"entropy":1.091,"top":49.5,"baseline":123,"threshold":615},"19":{"entropy":0.167,"top":98.3,"baseline":123,"threshold":615},"20":{"entropy":2.585,"top":16.7,"baseline":123,"threshold":615},"21":{"entropy":2.585,"top":16.8,"baseline":123,"threshold":615},"22":{"entropy":2.585,"top":16.7,"baseline":123,"threshold":615},"23":{"entropy":2.585,"top":16.7,"baseline":123,"threshold":615},"24":{"entropy":2.585,"top":16.8,"baseline":123,"threshold":615},"25":{"entropy":2.585,"top":16.7,"baseline":123,"threshold":615},"26":{"entropy":2.585,"top":16.7,"baseline":123,"threshold":615},"27":{"entropy":2.585,"top":16.8,"baseline":123,"threshold":615},"28":{"entropy":2.585,"top":16.7,"baseline":123,"threshold":615},"29":{"entropy":2.585,"top":16.7,"baseline":123,"threshold":615},"30":{"entropy":2.585,"top":16.8,"baseline":123,"threshold":615},"31":{"entropy":2.585,"top":16.7,"baseline":123,"threshold":615},"32":{"entropy":2.585,"top":16.8,"baseline":123,"threshold":615},"33":{"entropy":2.585,"top":16.8,"baseline":123,"threshold":615},"34":{"entropy":2.585,"top":16.7,"baseline":123,"threshold":615},"35":{"entropy":2.585,"top":16.8,"baseline":123,"threshold":615},"36":{"entropy":2.585,"top":16.7,"baseline":123,"threshold":615},"37":{"entropy":2.585,"top":16.7,"baseline":123,"threshold":615},"38":{"entropy":2.585,"top":16.8,"baseline":123,"threshold":615},"39":{"entropy":2.585,"top":16.7,"baseline":123,"threshold":615},"40":{"entropy":1.091,"top":49.5,"baseline":123,"threshold":615},"41":{"entropy":0.167,"top":98.3,"baseline":123,"threshold":615},"42":{"entropy":2.585,"top":16.7,"baseline":123,"threshold":615},"43":{"entropy":2.585,"top":16.7,"baseline":123,"threshold":615},"44":{"entropy":2.585,"top":16.8,"baseline":123,"threshold":615}},"flow":{"clientDeliv":83.5,"innocentDeliv":83.4,"attackerDeliv":2.0}}};
+
+(function(){
+if(!DATA_ADV.meta) return; // page shipped before scripts/analysis/build_dashboard_adv.py ran
+
+const SIM=DATA_ADV.meta.simTime;
+
+/* flat per-source {sec:pps} interpolation (v1's rateAt is nested by port; this is per-source) */
+function vRate(series,t){
+  if(!series) return 0;
+  const lo=Math.floor(t), hi=lo+1;
+  const a=+series[lo]||0, b=+series[hi]||0;
+  return a+(b-a)*(t-lo);
+}
+function metricsAt(exp,t){
+  const m=DATA_ADV[exp].metrics, k=Math.max(1,Math.min(SIM,Math.floor(t)));
+  return m[k]||{entropy:0,top:0,baseline:0,threshold:0};
+}
+
+let tA=0, playingA=false, speedA=4, lastA=0, mitigationA=true, prevTA=0, delivA=100;
+const logSeenA=new Set();
+let leftSources=[], dropCountsA={};
+function curExp(){ return mitigationA?'mitigated':'attack'; }
+function curSetAdv(){ return DATA_ADV[curExp()]; }
+
+function rebuildSources(){
+  leftSources = curSetAdv().sources
+    .filter(s=>s.role!=='server')
+    .slice()
+    .sort((a,b)=> a.port-b.port || (a.role==='innocent'?-1:1));
+  dropCountsA={};
+  leftSources.forEach(s=>dropCountsA[s.mac]=0);
+}
+
+/* event-derived block state for one source: 'none' | 'port' (coarse) | 'ip' (surgical/blacklisted) */
+function evStateAt(mac,t){
+  let state='none';
+  for(const d of curSetAdv().detections){
+    if(d.mac!==mac || d.t>t) continue;
+    if(d.event==='BLOCKED_PORT') state='port';
+    else if(d.event==='ISOLATED_IP') state='ip';
+    else if(d.event==='BLACKLISTED') state='ip';
+    else if(d.event==='UNBLOCKED') state='none';
+  }
+  return state;
+}
+function allStatesAt(t){
+  const out={};
+  for(const s of leftSources) out[s.mac]=evStateAt(s.mac,t);
+  return out;
+}
+function packetDropped(s,t,states){
+  if(s.role==='attacker') return states[s.mac]!=='none';
+  return leftSources.some(o=>o.port===s.port && o.role==='attacker' && states[o.mac]==='port');
+}
+function anyCongestion(t,states){
+  const thr=metricsAt(curExp(),t).threshold||615;
+  return leftSources.some(s=>s.role==='attacker' && vRate(s.rate,t)>thr && states[s.mac]==='none');
+}
+
+/* ===== topology ===== */
+const topoA=document.getElementById('topoAdv'), tctxA=topoA.getContext('2d');
+let TWa=0,THa=0,nodesA={};
+function layoutTopoAdv(){
+  const r=topoA.getBoundingClientRect(), dpr=Math.min(devicePixelRatio||1,2);
+  TWa=r.width; THa=r.height;
+  topoA.width=Math.round(TWa*dpr); topoA.height=Math.round(THa*dpr);
+  tctxA.setTransform(dpr,0,0,dpr,0,0);
+  const hx=Math.max(100,TWa*0.20), sx=TWa*0.5, vx=Math.min(TWa-92,TWa*0.86);
+  nodesA={sw:{x:sx,y:THa*0.5},srv:{x:vx,y:THa*0.5},ctl:{x:sx,y:THa*0.06}};
+  const n=leftSources.length;
+  leftSources.forEach((s,i)=>{
+    const y = n<=1 ? THa*0.5 : THa*(0.05 + i*(0.90/(n-1)));
+    nodesA[s.mac]={x:hx,y,role:s.role,ip:s.ip,port:s.port};
+  });
+}
+let packetsA=[], spawnAccA={};
+function spawnPacketsAdv(dt,states){
+  const t=tA;
+  for(const s of leftSources){
+    const pps=vRate(s.rate,t);
+    const vr=visualRate(pps)*(reduce?0.5:1)*(s.role==='client'||s.role==='innocent'?0.6:1);
+    spawnAccA[s.mac]=(spawnAccA[s.mac]||0)+vr*dt;
+    while(spawnAccA[s.mac]>=1 && packetsA.length<420){
+      spawnAccA[s.mac]-=1;
+      packetsA.push({mac:s.mac,role:s.role,seg:0,u:0,dropAt:-1,alpha:1,
+        sp0:1/(0.42+Math.random()*0.12), sp1:1/(0.40+Math.random()*0.12)});
+    }
+  }
+}
+function updatePacketsAdv(dt,states,cong){
+  for(const p of packetsA){
+    if(p.dropAt>=0){ p.alpha-=dt*4.5; continue; }
+    const n=nodesA[p.mac];
+    if(p.seg===0){
+      p.u+=p.sp0*dt;
+      if(p.u>=1){
+        const srcObj=leftSources.find(s=>s.mac===p.mac);
+        if(srcObj && packetDropped(srcObj,tA,states)){ p.dropAt=0; p.alpha=1; p.dx=nodesA.sw.x; p.dy=nodesA.sw.y; continue; }
+        if(cong){
+          const loss = p.role==='attacker'?0.74:0.42;
+          if(Math.random()<loss){ p.dropAt=0; p.alpha=1; p.dx=nodesA.sw.x; p.dy=nodesA.sw.y; continue; }
+        }
+        p.seg=1; p.u=0;
+      }
+    } else {
+      p.u+=p.sp1*dt;
+      if(p.u>=1) p.dropAt=-2;
+    }
+  }
+  packetsA=packetsA.filter(p=>p.dropAt!==-2 && p.alpha>0);
+}
+function nodeColorAdv(role){
+  return role==='client'?P.client:role==='attacker'?P.attacker:role==='innocent'?P.innocent:
+    role==='server'?P.server:role==='switch'?P.switch:P.accent;
+}
+function packetPosAdv(p){
+  const n=nodesA[p.mac], sw=nodesA.sw, sv=nodesA.srv;
+  if(p.dropAt>=0) return {x:p.dx,y:p.dy};
+  if(p.seg===0) return {x:lerp(n.x,sw.x,p.u),y:lerp(n.y,sw.y,p.u)};
+  return {x:lerp(sw.x,sv.x,p.u),y:lerp(sw.y,sv.y,p.u)};
+}
+function drawNodeAdv(n,r,fill,active){
+  tctxA.beginPath(); tctxA.arc(n.x,n.y,r,0,7);
+  tctxA.fillStyle=P.panel; tctxA.fill();
+  tctxA.lineWidth=active?3:1.8; tctxA.strokeStyle=fill; tctxA.stroke();
+  tctxA.fillStyle=fill; tctxA.beginPath(); tctxA.arc(n.x,n.y,r*0.46,0,7); tctxA.fill();
+}
+function drawTopoAdv(){
+  tctxA.clearRect(0,0,TWa,THa);
+  const t=tA, states=allStatesAt(t), cong=anyCongestion(t,states);
+
+  for(const s of leftSources){
+    const n=nodesA[s.mac], hot=s.role==='attacker' && states[s.mac]==='none' && vRate(s.rate,t)>(metricsAt(curExp(),t).threshold||615);
+    const dropped=packetDropped(s,t,states);
+    tctxA.beginPath(); tctxA.moveTo(n.x,n.y); tctxA.lineTo(nodesA.sw.x,nodesA.sw.y);
+    tctxA.lineWidth=hot?4:1.4;
+    tctxA.strokeStyle=hot?P.attacker:(dropped?P.faint:P.line);
+    tctxA.globalAlpha=dropped?0.35:(hot?0.5:0.8);
+    if(dropped) tctxA.setLineDash([3,3]);
+    tctxA.stroke(); tctxA.setLineDash([]); tctxA.globalAlpha=1;
+  }
+  /* shared-port bracket */
+  const byPort={};
+  leftSources.forEach(s=>{ (byPort[s.port]=byPort[s.port]||[]).push(s); });
+  for(const port in byPort){
+    if(byPort[port].length<2) continue;
+    const [a,b]=byPort[port].map(s=>nodesA[s.mac]);
+    const bx=nodesA[leftSources[0]?.mac]?.x - 26 || 0;
+    tctxA.strokeStyle=P.faint; tctxA.lineWidth=1.2; tctxA.globalAlpha=.8;
+    tctxA.beginPath(); tctxA.moveTo(a.x-14,a.y); tctxA.lineTo(bx,a.y); tctxA.lineTo(bx,b.y); tctxA.lineTo(b.x-14,b.y); tctxA.stroke();
+    tctxA.globalAlpha=1;
+    tctxA.font='700 9px "JetBrains Mono",monospace'; tctxA.fillStyle=P.muted; tctxA.textAlign='right';
+    tctxA.save(); tctxA.translate(bx-6,(a.y+b.y)/2); tctxA.rotate(-Math.PI/2);
+    tctxA.fillText('SHARED PORT '+port,0,0); tctxA.restore();
+  }
+
+  tctxA.beginPath(); tctxA.moveTo(nodesA.sw.x,nodesA.sw.y); tctxA.lineTo(nodesA.srv.x,nodesA.srv.y);
+  tctxA.lineWidth=cong?6:3.2; tctxA.strokeStyle=cong?P.crit:P.line; tctxA.globalAlpha=cong?0.55:0.7; tctxA.stroke(); tctxA.globalAlpha=1;
+  tctxA.font='600 10px Inter,sans-serif'; tctxA.textAlign='center'; tctxA.fillStyle=cong?P.crit:P.faint;
+  tctxA.fillText(cong?'bottleneck link · SATURATED':'bottleneck link',(nodesA.sw.x+nodesA.srv.x)/2,nodesA.sw.y-13);
+
+  tctxA.setLineDash([4,4]); tctxA.beginPath(); tctxA.moveTo(nodesA.ctl.x,nodesA.ctl.y+16); tctxA.lineTo(nodesA.sw.x,nodesA.sw.y-20);
+  tctxA.lineWidth=1.6; tctxA.strokeStyle=P.accent; tctxA.globalAlpha=.6; tctxA.stroke(); tctxA.setLineDash([]); tctxA.globalAlpha=1;
+
+  for(const p of packetsA){
+    const pos=packetPosAdv(p), col=nodeColorAdv(p.role);
+    tctxA.globalAlpha=Math.max(0,p.alpha);
+    if(p.dropAt>=0){
+      const sSize=3; tctxA.strokeStyle=P.crit; tctxA.lineWidth=1.5;
+      tctxA.beginPath(); tctxA.moveTo(pos.x-sSize,pos.y-sSize);tctxA.lineTo(pos.x+sSize,pos.y+sSize);
+      tctxA.moveTo(pos.x+sSize,pos.y-sSize);tctxA.lineTo(pos.x-sSize,pos.y+sSize); tctxA.stroke();
+    } else {
+      tctxA.beginPath(); tctxA.arc(pos.x,pos.y,p.role==='attacker'?2.4:2.6,0,7); tctxA.fillStyle=col; tctxA.fill();
+    }
+    tctxA.globalAlpha=1;
+  }
+
+  const anyDetected=[...Object.values(states)].some(v=>v!=='none');
+  drawNodeAdv(nodesA.sw,15,P.switch,true);
+  drawNodeAdv(nodesA.srv,14,P.server,true);
+  for(const s of leftSources){
+    const n=nodesA[s.mac];
+    const hot=s.role==='attacker' && states[s.mac]==='none' && vRate(s.rate,t)>(metricsAt(curExp(),t).threshold||615);
+    drawNodeAdv(n, s.role==='attacker'?8:6, nodeColorAdv(s.role), hot);
+  }
+  const c=nodesA.ctl;
+  tctxA.beginPath(); tctxA.moveTo(c.x-19,c.y-13);
+  const rr=(x,y,w,h,rad)=>{tctxA.moveTo(x+rad,y);tctxA.arcTo(x+w,y,x+w,y+h,rad);tctxA.arcTo(x+w,y+h,x,y+h,rad);tctxA.arcTo(x,y+h,x,y,rad);tctxA.arcTo(x,y,x+w,y,rad);};
+  tctxA.beginPath(); rr(c.x-19,c.y-13,38,26,7); tctxA.closePath(); tctxA.fillStyle=P.panel; tctxA.fill();
+  tctxA.lineWidth=anyDetected?3:2; tctxA.strokeStyle=P.accent; tctxA.stroke();
+  tctxA.fillStyle=P.accent; tctxA.font='700 11px Inter,sans-serif'; tctxA.textAlign='center'; tctxA.textBaseline='middle';
+  tctxA.fillText('CTL',c.x,c.y); tctxA.textBaseline='alphabetic';
+
+  tctxA.font='600 8.6px Inter,sans-serif';
+  for(const s of leftSources){
+    const n=nodesA[s.mac];
+    const hot=s.role==='attacker' && states[s.mac]==='none' && vRate(s.rate,t)>(metricsAt(curExp(),t).threshold||615);
+    tctxA.fillStyle = hot?P.attacker : (s.role==='innocent'?P.innocent:P.muted);
+    tctxA.textAlign='right';
+    const label=(s.role==='client'?'Client':s.role==='innocent'?'Innocent':'Attacker')+' .'+s.ip.split('.').pop();
+    tctxA.fillText(label, n.x-10, n.y+3);
+  }
+  tctxA.textAlign='left'; tctxA.fillStyle=P.muted; tctxA.font='600 10px Inter,sans-serif';
+  tctxA.fillText('Switch',nodesA.sw.x+18,nodesA.sw.y+28);
+  tctxA.fillText('Server',nodesA.srv.x+17,nodesA.srv.y+4);
+  tctxA.fillStyle=P.accent; tctxA.fillText('Controller',nodesA.ctl.x+24,nodesA.ctl.y+4);
+}
+
+/* ===== chart ===== */
+const chartA=document.getElementById('chartAdv'), cctxA=chartA.getContext('2d');
+let CWa=0,CHa=0,padA={l:46,r:12,t:12,b:22};
+function layoutChartAdv(){
+  const r=chartA.getBoundingClientRect(), dpr=Math.min(devicePixelRatio||1,2);
+  CWa=r.width; CHa=r.height;
+  chartA.width=Math.round(CWa*dpr); chartA.height=Math.round(CHa*dpr);
+  cctxA.setTransform(dpr,0,0,dpr,0,0);
+}
+function xAtA(tt){return padA.l+(tt/SIM)*(CWa-padA.l-padA.r);}
+function yAtA(v){const lg=Math.log10(Math.max(v,1)); return CHa-padA.b-((lg-0)/5)*(CHa-padA.t-padA.b);}
+function drawChartAdv(){
+  cctxA.clearRect(0,0,CWa,CHa);
+  cctxA.font='9px "JetBrains Mono",monospace'; cctxA.textBaseline='middle';
+  const labels={1:'1',10:'10',100:'100',1000:'1k',10000:'10k',100000:'100k'};
+  for(const v in labels){
+    const y=yAtA(+v);
+    cctxA.strokeStyle=P.line; cctxA.lineWidth=1; cctxA.globalAlpha=.6;
+    cctxA.beginPath(); cctxA.moveTo(padA.l,y); cctxA.lineTo(CWa-padA.r,y); cctxA.stroke(); cctxA.globalAlpha=1;
+    cctxA.fillStyle=P.faint; cctxA.textAlign='right'; cctxA.fillText(labels[v],padA.l-6,y);
+  }
+  cctxA.textAlign='center'; cctxA.fillStyle=P.faint;
+  for(let s=0;s<=SIM;s+=10) cctxA.fillText(s+'s',xAtA(s),CHa-padA.b+12);
+
+  const N=Math.max(2,Math.floor(tA*3));
+  function line(fn,col,w,fill,dash){
+    cctxA.beginPath();
+    for(let i=0;i<=N;i++){const tt=Math.min(tA,i*(tA/N)); cctxA.lineTo(xAtA(tt),yAtA(fn(tt)));}
+    if(fill){ cctxA.lineTo(xAtA(Math.min(tA,SIM)),CHa-padA.b); cctxA.lineTo(padA.l,CHa-padA.b); cctxA.closePath();
+      cctxA.fillStyle=col; cctxA.globalAlpha=.08; cctxA.fill(); cctxA.globalAlpha=1; }
+    else { if(dash)cctxA.setLineDash(dash); cctxA.strokeStyle=col; cctxA.lineWidth=w; cctxA.lineJoin='round'; cctxA.stroke(); cctxA.setLineDash([]); }
+  }
+  const thrFn=tt=>metricsAt(curExp(),tt).threshold||0;
+  line(thrFn,P.warn,1.6,false,[5,4]);
+  const clientsNow=leftSources.filter(s=>s.role==='client');
+  const avgClientFn=tt=>clientsNow.length?clientsNow.reduce((a,s)=>a+vRate(s.rate,tt),0)/clientsNow.length:0;
+  const innSrc=leftSources.find(s=>s.role==='innocent');
+  const innFn=tt=>innSrc?vRate(innSrc.rate,tt):0;
+  for(const s of leftSources.filter(s=>s.role==='attacker')){
+    const fn=tt=>vRate(s.rate,tt);
+    line(fn,P.attacker,0,true); line(fn,P.attacker,2,false);
+  }
+  line(avgClientFn,P.client,2.2,false);
+  line(innFn,P.innocent,2.2,false);
+
+  const xh=xAtA(Math.min(tA,SIM)); cctxA.strokeStyle=P.accent; cctxA.globalAlpha=.5; cctxA.lineWidth=1.2;
+  cctxA.beginPath(); cctxA.moveTo(xh,padA.t); cctxA.lineTo(xh,CHa-padA.b); cctxA.stroke(); cctxA.globalAlpha=1;
+}
+
+/* ===== flows & log & tiles ===== */
+const flowsElA=document.getElementById('flowsAdv'), logElA=document.getElementById('logAdv'), flowBadgeA=document.getElementById('flowbadgeAdv');
+function renderFlowsAdv(states){
+  const rows=[];
+  const learned=leftSources.filter(s=>s.role!=='server');
+  rows.push({c:'fwd',prio:'100',match:`eth_src=<${learned.length} learned hosts> eth_dst=server`,act:'output:8'});
+  rows.push({c:'miss',prio:'0',match:'table-miss',act:'CONTROLLER'});
+  for(const s of leftSources.filter(s=>s.role==='attacker')){
+    const st=states[s.mac];
+    if(st==='port') rows.unshift({c:'drop',prio:'200',match:`in_port=${s.port} (coarse, attacker .${s.ip.split('.').pop()})`,act:'DROP',mc:dropCountsA[s.mac]});
+    else if(st==='ip') rows.unshift({c:'drop',prio:'210',match:`ip_src=${s.ip} (surgical)`,act:'DROP',mc:dropCountsA[s.mac]});
+  }
+  flowsElA.innerHTML='';
+  rows.forEach(f=>{
+    const d=document.createElement('div'); d.className='flow '+f.c;
+    d.innerHTML=`<span class="prio">p${f.prio}</span><span class="match">${f.match}</span><span class="act">${f.act}</span>`+
+      (f.mc!==undefined?`<span class="mc">matched ${Math.round(f.mc).toLocaleString()} pkts → dropped</span>`:'');
+    flowsElA.appendChild(d);
+  });
+  flowBadgeA.textContent=rows.length+' rules';
+}
+function addLogAdv(id,time,msg,cls){
+  if(logSeenA.has(id))return; logSeenA.add(id);
+  const e=document.createElement('div'); e.className='le in'+(cls?' '+cls:'');
+  e.innerHTML=`<span class="t">${time}</span><span class="m">${msg}</span>`;
+  logElA.prepend(e);
+  while(logElA.children.length>22) logElA.lastChild.remove();
+}
+function resetLogAdv(){logElA.innerHTML='';logSeenA.clear();}
+
+const mAtkA=document.getElementById('m-atkAdv'),mThrA=document.getElementById('m-thrAdv'),
+  mEntA=document.getElementById('m-entAdv'),mDelivA=document.getElementById('m-delivAdv');
+const statusElA=document.getElementById('statusAdv'),statusTextA=document.getElementById('statustextAdv'),phaseElA=document.getElementById('phaseAdv');
+const tileAtkA=document.getElementById('tile-atkAdv'),topobadgeA=document.getElementById('topobadgeAdv');
+
+function setStatusAdv(states,cong){
+  let cls,txt,phase;
+  const anyBlocked=Object.values(states).some(v=>v!=='none');
+  if(tA<10){ cls='ok';txt='Normal';phase='5 clients, 1 innocent host and 3 attackers streaming UDP; the innocent shares port 9 with one attacker.'; }
+  else if(anyBlocked && mitigationA){ cls='mit';txt='Mitigating';phase='At least one attacker is isolated by a per-IP DROP rule; its port-mate (if any) is back online.'; }
+  else if(cong){ cls='crit';txt='Under attack';phase=mitigationA?'A newly-arrived or re-offending attacker is flooding before the controller reacts.':'Flood detected, but mitigation is OFF — logging only, bottleneck link stays saturated.'; }
+  else { cls='ok';txt='Normal';phase='No source is currently over the adaptive threshold.'; }
+  statusElA.className='pill '+cls; statusTextA.textContent=txt; phaseElA.textContent=phase;
+  topobadgeA.textContent = anyBlocked?'mitigating':(cong?'flood active':'data plane');
+}
+
+function updateEventsAdv(){
+  if(tA>=1.0) addLogAdv('hsA','1.0','Controller ↔ switch handshake OK · L2 learning active');
+  if(tA>=2.0) addLogAdv('pollA','2.0','Per-source flow-stats polling started · interval 1.0 s');
+  const m=metricsAt(curExp(),8);
+  if(tA>=8.0) addLogAdv('blA','8.0',`Baseline learned from quiet traffic: <b>${Math.round(m.baseline)} pps</b> → adaptive threshold set to <b>${Math.round(m.threshold)} pps</b>`);
+  curSetAdv().detections.forEach((d,i)=>{
+    if(tA<d.t) return;
+    let msg=null, cls=null;
+    if(d.event==='DETECTED'){ msg=`<b>ALERT</b> ${d.ip} (port ${d.port}) = <b>${d.pps.toLocaleString()} pps</b> @ ~110B/pkt &gt; ${d.thr} adaptive threshold → DETECTED (offense #${d.offense})`; cls='crit'; }
+    else if(d.event==='BLOCKED_PORT'){ msg=`Flow-mod add <b>prio200 in_port=${d.port} → DROP</b> · whole port blocked (coarse stage)`; cls='act'; }
+    else if(d.event==='ISOLATED_IP'){ msg=`Flow-mod swap → <b>prio210 ip_src=${d.ip} → DROP</b> · port ${d.port} reopened, only the attacker stays blocked`; cls='act'; }
+    else if(d.event==='UNBLOCKED'){ msg=`${d.ip} isolation window elapsed · rule removed, host unblocked`; cls='warn'; }
+    else if(d.event==='BLACKLISTED'){ msg=`<b>${d.ip} BLACKLISTED</b> after offense #${d.offense} · blocked permanently`; cls='crit'; }
+    else if(d.event==='DISTRIBUTED_ALERT_ON'){ msg=`<b>DISTRIBUTED ALERT</b> aggregate rate ${Math.round(d.pps).toLocaleString()} pps across many sources &gt; ${Math.round(d.thr).toLocaleString()} &mdash; per-source thresholds tightened`; cls='crit'; }
+    else if(d.event==='DISTRIBUTED_ALERT_OFF'){ msg=`Distributed alert cleared · per-source thresholds back to normal`; cls='warn'; }
+    if(msg) addLogAdv('evA'+i, d.t.toFixed(3), msg, cls);
+  });
+}
+
+function recomputeAdv(states,cong){
+  const inn=leftSources.find(s=>s.role==='innocent');
+  const innDropped = inn && packetDropped(inn,tA,states);
+  let target=100;
+  if(innDropped) target=10;
+  else if(cong) target=curSetAdv().flow.innocentDeliv;
+  delivA += (target-delivA)*0.9;
+  for(const s of leftSources.filter(s=>s.role==='attacker')){
+    if(states[s.mac]!=='none') dropCountsA[s.mac]+=vRate(s.rate,tA)*(tA-prevTA);
+  }
+  prevTA=tA;
+}
+
+function renderAdv(){
+  const states=allStatesAt(tA), cong=anyCongestion(tA,states);
+  recomputeAdv(states,cong); setStatusAdv(states,cong); updateEventsAdv();
+  const atkPeak=Math.round(Math.max(0,...leftSources.filter(s=>s.role==='attacker').map(s=>vRate(s.rate,tA))));
+  const m=metricsAt(curExp(),tA);
+  mAtkA.textContent=atkPeak.toLocaleString(); tileAtkA.className='tile'+(atkPeak>(m.threshold||615)?' alarm':'');
+  mThrA.textContent=m.threshold?Math.round(m.threshold).toLocaleString():'learning…';
+  mEntA.textContent=m.entropy?m.entropy.toFixed(2):'0.00';
+  mDelivA.textContent=Math.round(delivA);
+  document.getElementById('clockAdv').textContent=tA.toFixed(2);
+  const pct=(tA/SIM)*100; document.getElementById('fillAdv').style.width=pct+'%';
+  document.getElementById('theadAdv').style.left=pct+'%';
+  document.getElementById('trackAdv').setAttribute('aria-valuenow',tA.toFixed(1));
+  renderFlowsAdv(states);
+  drawTopoAdv(); drawChartAdv();
+}
+function frameAdv(ts){
+  if(!lastA)lastA=ts; let dt=(ts-lastA)/1000; lastA=ts; if(dt>0.1)dt=0.1;
+  if(playingA){
+    tA+=dt*speedA;
+    if(tA>=SIM){ tA=SIM; playingA=false; playBtnA.innerHTML='&#9654; Play'; }
+  }
+  const states=allStatesAt(tA), cong=anyCongestion(tA,states);
+  spawnPacketsAdv(dt,states); updatePacketsAdv(dt,states,cong);
+  renderAdv();
+  requestAnimationFrame(frameAdv);
+}
+
+const playBtnA=document.getElementById('playAdv');
+function resetAdv(hard){
+  tA=0;prevTA=0;delivA=100;packetsA=[];spawnAccA={};resetLogAdv();
+  rebuildSources();
+  if(hard){playingA=false;playBtnA.innerHTML='&#9654; Play';}
+}
+playBtnA.onclick=()=>{ if(tA>=SIM) resetAdv(false); playingA=!playingA; playBtnA.innerHTML=playingA?'&#10074;&#10074; Pause':'&#9654; Play'; lastA=0; };
+document.getElementById('restartAdv').onclick=()=>{ resetAdv(true); playingA=true; playBtnA.innerHTML='&#10074;&#10074; Pause'; lastA=0; };
+document.querySelectorAll('[data-spdadv]').forEach(b=>b.onclick=()=>{
+  speedA=+b.dataset.spdadv; document.querySelectorAll('[data-spdadv]').forEach(x=>x.setAttribute('aria-pressed',x===b));
+});
+const mitBtnA=document.getElementById('mitAdv');
+function setMitAdv(on){
+  mitigationA=on; mitBtnA.setAttribute('aria-pressed',on);
+  mitBtnA.querySelector('.lab').textContent=on?'Mitigation ON':'Mitigation OFF';
+  document.getElementById('row-noprotectAdv').classList.toggle('cur',!on);
+  document.getElementById('row-v2Adv').classList.toggle('cur',on);
+  resetAdv(false); updateEventsAdv();
+}
+mitBtnA.onclick=()=>setMitAdv(!mitigationA);
+
+const trackA=document.getElementById('trackAdv');
+function scrubToAdv(clientX){
+  const r=trackA.getBoundingClientRect(); let f=(clientX-r.left)/r.width; f=Math.max(0,Math.min(1,f));
+  const nt=f*SIM;
+  resetAdv(false); tA=nt; prevTA=nt;
+  resetLogAdv(); updateEventsAdv();
+}
+let scrubbingA=false;
+trackA.addEventListener('pointerdown',e=>{scrubbingA=true;trackA.setPointerCapture(e.pointerId);playingA=false;playBtnA.innerHTML='&#9654; Play';scrubToAdv(e.clientX);});
+trackA.addEventListener('pointermove',e=>{if(scrubbingA)scrubToAdv(e.clientX);});
+trackA.addEventListener('pointerup',()=>scrubbingA=false);
+trackA.addEventListener('keydown',e=>{ if(e.key==='ArrowRight'){tA=Math.min(SIM,tA+1);scrubToAdv(trackA.getBoundingClientRect().left+ (tA/SIM)*trackA.getBoundingClientRect().width);e.preventDefault();}
+  if(e.key==='ArrowLeft'){tA=Math.max(0,tA-1);scrubToAdv(trackA.getBoundingClientRect().left+ (tA/SIM)*trackA.getBoundingClientRect().width);e.preventDefault();} });
+
+function resizeAllAdv(){ layoutTopoAdv(); layoutChartAdv(); }
+const roA=new ResizeObserver(resizeAllAdv); roA.observe(topoA); roA.observe(chartA);
+window.addEventListener('resize',resizeAllAdv);
+rebuildSources(); resizeAllAdv(); setMitAdv(true); resetAdv(true);
+let demoStartedA=false;
+const demoIOA=new IntersectionObserver((entries)=>{
+  entries.forEach(e=>{
+    if(e.isIntersecting && !demoStartedA){
+      demoStartedA=true;
+      setTimeout(()=>{ playingA=true; playBtnA.innerHTML='&#10074;&#10074; Pause'; lastA=0; }, 400);
+    }
+  });
+},{threshold:.3});
+demoIOA.observe(document.getElementById('v2advanced'));
+requestAnimationFrame(frameAdv);
+})();
 </script>
 
 <script>
