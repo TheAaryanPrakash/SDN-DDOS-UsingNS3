@@ -31,6 +31,39 @@ published via GitHub Pages at the link above, with two parts:
 Every number in the demo is read from the committed `results/` data; rebuild
 it after new runs with `python3 scripts/analysis/build_dashboard.py`.
 
+## Advanced controller (v2)
+
+A second controller, `SdnControllerAdv`
+([`src/controller/sdn-controller-adv.cc`](src/controller/sdn-controller-adv.cc)),
+and the `ddos-advanced` experiment
+([`simulations/ddos-advanced`](simulations/ddos-advanced)) extend the project
+in response to review feedback. The topology adds **one shared switch port
+carrying both an attacker and an innocent client**, and the number of clients
+and attackers is **randomised per run** (`--run`):
+
+1. **Per-source detection** -- polls OpenFlow `flow-stats` and aggregates by
+   `eth_src`, so each host is measured even when several share one port
+   (plain per-port stats cannot).
+2. **Multi-signal + adaptive threshold** -- flags a source only when its rate
+   beats an adaptive baseline (`BaselineMultiplier x baseline`, floored at
+   `MinThreshold`) **and** its average packet size is small. Source entropy
+   and top-talker share are logged as extra indicators. (There is no
+   international standard pps value for a DDoS -- the threshold is
+   deliberately baseline-relative.)
+3. **Two-stage mitigation** -- a coarse `in_port` DROP first, then a
+   surgical `ip_src` DROP while the port block is lifted, so the innocent
+   client sharing the attacker's port recovers (measured: **~83% delivery,
+   same as a dedicated client**, vs ~30% with no mitigation).
+4. **Penalties** -- each offence is held down longer (5s -> 20s -> ...);
+   after `MaxStrikes` the source is permanently `BLACKLISTED`.
+
+Run it with `./ns3 run "ddos-advanced --run=1"` (results in
+`results/adv-mitigated` and `results/adv-attack`). Rate-limiting with
+OpenFlow **meters** instead of an outright drop, plus the extra detection
+signals (source-distribution, SDN control-plane spikes, ML), are left as
+future scope. The original Phase 1-13 controller and its results are
+unchanged.
+
 ---
 
 ## 1. Project objective
